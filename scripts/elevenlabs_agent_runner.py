@@ -82,6 +82,28 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 WSS_BASE = "wss://api.elevenlabs.io/v1/convai/conversation"
 
 
+ENVIRONMENT_OVERRIDES = {
+    "elevenlabs_api_key": "ELEVENLABS_API_KEY",
+    "agent_id": "ELEVENLABS_AGENT_ID",
+    "signed_url": "ELEVENLABS_SIGNED_URL",
+    "voice_id": "ELEVENLABS_VOICE_ID",
+    "language": "ELEVENLABS_AGENT_LANGUAGE",
+    "user_id": "ELEVENLABS_USER_ID",
+}
+
+
+def apply_env_overrides(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a shallow copy of cfg with environment variables applied first."""
+
+    resolved = dict(cfg)
+    for key, env_name in ENVIRONMENT_OVERRIDES.items():
+        if env_name in os.environ:
+            resolved[key] = os.environ.get(env_name)
+    if "ELEVENLABS_AUTH_MODE" in os.environ:
+        resolved["auth_mode"] = os.environ.get("ELEVENLABS_AUTH_MODE")
+    return resolved
+
+
 def load_config(path: str) -> Dict[str, Any]:
     """Load config.json.
 
@@ -212,6 +234,7 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
 
     Handles ping/pong, prints user and agent text events. Audio is ignored here.
     """
+    cfg = apply_env_overrides(cfg)
     try:
         import websockets  # type: ignore
     except Exception as e:
@@ -432,7 +455,7 @@ def main() -> int:
     parser.add_argument("--conversation-id", help="Target conversation_id for the enqueued update")
     args = parser.parse_args()
 
-    cfg = load_config(args.config)
+    cfg = apply_env_overrides(load_config(args.config))
 
     # Fast path: enqueue a contextual_update without opening a WebSocket
     if args.enqueue_update is not None:

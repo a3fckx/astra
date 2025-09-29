@@ -35,6 +35,7 @@
 ### Configuration
 - Keep `config.json` as the single source of truth (API keys, agent ID, voice).
 - Set `elevenlabs_api_key` locally; do not commit secrets — add a `.example` if sharing.
+- Runtime environment variables (e.g., `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `ELEVENLABS_VOICE_ID`) take precedence over `config.json`.
 - For SDK audio sessions, keep `sdk_audio_playback` and `sdk_microphone_capture` true to use ElevenLabs’ streamed audio.
 - Store config in `config.json`; never hardcode sensitive values
 - Prefer environment variables for API keys (`ELEVENLABS_API_KEY`).

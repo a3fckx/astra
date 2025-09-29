@@ -28,6 +28,26 @@ import re
 from typing import Any, Dict
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
+
+ENVIRONMENT_OVERRIDES = {
+    "elevenlabs_api_key": "ELEVENLABS_API_KEY",
+    "agent_id": "ELEVENLABS_AGENT_ID",
+    "signed_url": "ELEVENLABS_SIGNED_URL",
+    "voice_id": "ELEVENLABS_VOICE_ID",
+    "language": "ELEVENLABS_AGENT_LANGUAGE",
+    "user_id": "ELEVENLABS_USER_ID",
+}
+
+
+def apply_env_overrides(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    resolved = dict(cfg)
+    for key, env_name in ENVIRONMENT_OVERRIDES.items():
+        if env_name in os.environ:
+            resolved[key] = os.environ.get(env_name)
+    if "ELEVENLABS_AUTH_MODE" in os.environ:
+        resolved["auth_mode"] = os.environ.get("ELEVENLABS_AUTH_MODE")
+    return resolved
+
 def load_json(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -57,7 +77,7 @@ def render_prompt(template_path: str, variables: Dict[str, str]) -> str:
 
 
 def main() -> int:
-    cfg = load_json("config.json")
+    cfg = apply_env_overrides(load_json("config.json"))
     mem = load_json(cfg.get("memory_buffer_source", {}).get("path", "buffer/memory_buffer.json"))
     dyn_vars = to_string_map(mem)
 
