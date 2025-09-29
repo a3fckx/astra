@@ -33,6 +33,11 @@
 - Dynamic variables are injected only at session start; use contextual updates mid-session instead of rewriting the prompt.
 
 ### Configuration
+- Keep `config.json` as the single source of truth (API keys, agent ID, voice).
+- Set `elevenlabs_api_key` locally; do not commit secrets — add a `.example` if sharing.
+- Align SDK/WebSocket voice: set `voice_id` to the desired ElevenLabs voice ID and `override_tts` to `true` so playback matches the dashboard.
+- Leave `override_tts` false only if you want the agent-side default voice; otherwise the runner may sound different.
+- For SDK audio sessions, keep `sdk_audio_playback` and `sdk_microphone_capture` true to use ElevenLabs’ streamed audio.
 - Store config in `config.json`; never hardcode sensitive values
 - Prefer environment variables for API keys (`ELEVENLABS_API_KEY`).
 - Validate required config fields at startup.
