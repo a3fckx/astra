@@ -1,13 +1,13 @@
 # Astra Architecture — One‑Pager (v1)
 
 ## Vision
-- Front‑facing eResponder talks to the user and answers strictly from a provided memory buffer.
-- Background workers (not in this iteration) continuously extract/update facts into shared memory; the eResponder never writes or calls tools.
+- Front‑facing Responder talks to the user and answers strictly from a provided memory buffer.
+- Background workers (not in this iteration) continuously extract/update facts into shared memory; the Responder never writes or calls tools.
 - Astro‑centric experience: personalize around birth details and chosen system (Western or Vedic/kundli).
 
 ## Components
-- eResponder (read‑only): composes replies from the buffer; asks focused clarifying questions; outputs WAIT if the answer requires info beyond the buffer.
-- Memory Buffer (input to eResponder): a compact, curated context that includes a small FIFO window of recent turns plus pinned important facts.
+- Responder (read‑only): composes replies from the buffer; asks focused clarifying questions; outputs WAIT if the answer requires info beyond the buffer.
+- Memory Buffer (input to Responder): a compact, curated context that includes a small FIFO window of recent turns plus pinned important facts.
 - (Later) Workers: extract structured facts from conversation, call tools, and update shared memory; promote “important” items for pinning.
 
 ## Memory Buffer Goals
@@ -15,7 +15,7 @@
 - Salience: surface a tiny, pinned set of high‑importance facts (e.g., birth details, astro system choice).
 - Relevance: include only what’s needed for the current turn; omit raw tool outputs.
 - Precision: prefer user‑stated facts; clearly reflect missing/unknown fields rather than guessing.
-- Boundaries: if required info is not present, enable the eResponder to say WAIT.
+- Boundaries: if required info is not present, enable the Responder to say WAIT.
 
 ## Memory Buffer Contents (first iteration)
 - recent_messages: last N user/agent turns (short snippets).
@@ -26,11 +26,11 @@
 - missing_fields: explicit list of unknown but relevant fields (e.g., birth time).
 
 ## Turn Loop (conceptual)
-- eResponder receives {recent_messages, pinned_facts, astro_snapshot, conversation_focus, user_preferences, missing_fields}.
-- eResponder replies grounded only in these fields; if helpful, asks one precise follow‑up to keep momentum.
-- If the request cannot be answered from the buffer and no clarifying question would help, eResponder outputs exactly: WAIT
+- Responder receives {recent_messages, pinned_facts, astro_snapshot, conversation_focus, user_preferences, missing_fields}.
+- Responder replies grounded only in these fields; if helpful, asks one precise follow‑up to keep momentum.
+- If the request cannot be answered from the buffer and no clarifying question would help, Responder outputs exactly: WAIT
 
-## eResponder System Prompt (paste as‑is)
+## Responder System Prompt (paste as‑is)
 System: You are Astra, a warm, concise, astrology‑forward responder. You rely exclusively on the provided memory buffer (context) and never access tools or store data yourself. Treat astrology as guidance, not absolute truth. Keep the conversation moving with brevity, kindness, and clarity.
 
 Operating rules:

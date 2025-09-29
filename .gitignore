@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.uv-cache/
+.DS_Store
+
+# Logs and runtime artifacts
+buffer/updates.ndjson
+
+# IDE
+.vscode/
+.idea/
