@@ -49,6 +49,7 @@
 - Prefer the queue helper (`--enqueue-update`) for multi-agent coordination.
 
 ### Documentation
+- Use semantic commit messages (e.g., `feat:`, `fix:`, `docs:`) for all repo commits.
 - Add docstrings to public functions with parameter/return descriptions
 - Comment complex logic; keep comments concise and current
 - Use type hints instead of comments for parameter types
