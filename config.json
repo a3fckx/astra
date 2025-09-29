@@ -1,9 +1,9 @@
 {
   "elevenlabs_api_key": "",
   "agent_id": "agent_9501k3xm7f8bfvysgym9sd8e1fdb",
-  "voice_id": "<SET_YOUR_VOICE_ID>",
+  "voice_id": "",
   "language": "en",
-  "override_tts": true,
+  "override_tts": false,
   "override_language": false,
   "override_first_message": false,
   "auth_mode": "auto",
