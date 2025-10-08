@@ -53,6 +53,17 @@ cp .env.example .env
 npm run dev        # http://localhost:3000
 ```
 
+Prefer Bun for faster installs? Next.js 15 runs fine on Bun ≥1.1:
+
+```bash
+# Optional: using Bun instead of npm
+cd app
+bun install
+bun run dev
+```
+
+> We still ship `package-lock.json` for npm compatibility. If you standardize on Bun, commit the generated `bun.lockb` and remove the npm lockfile to avoid drift.
+
 Available scripts:
 
 ```bash
