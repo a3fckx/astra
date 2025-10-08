@@ -107,6 +107,7 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for expectations.
 - **Secrets:** Never commit real API keys. Keep `.env.example` in sync with required variables.
 - **Persona updates:** Edit `agents/responder/prompt.md` and reflect changes in `docs/PERSONA.md`.
 - **Git workflow:** Main holds the historical snapshot; new work occurs on feature branches (e.g., `dev`).
+- **Claude sync:** Install pre-commit hooks (`pre-commit install`) so `Claude.md` stays mirrored with `AGENTS.md` on each commit.
 
 ---
 

@@ -30,6 +30,7 @@ astra/
 - `app/src/app/dashboard/page.tsx` — Signed-in responder console
 - `agents/responder/prompt.md` — Jadugar system prompt
 - `.sessions/template.md` — Session logging template (use via `session.sh`)
+- `.pre-commit-config.yaml` — Syncs `AGENTS.md` to `Claude.md` before commits
 
 ---
 
