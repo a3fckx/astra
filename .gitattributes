@@ -1,0 +1,2 @@
+# Ensure session script has execute permissions
+session.sh text eol=lf

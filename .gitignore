@@ -1,12 +1,69 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
 .venv/
+venv/
+ENV/
+env/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# UV cache
 .uv-cache/
+
+# OS files
 .DS_Store
+Thumbs.db
 
 # Logs and runtime artifacts
+*.log
+*.tmp
 buffer/updates.ndjson
+backend/app/buffer/updates.ndjson
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# App service
+app/node_modules/
+app/dist/
+app/.vite/
+app/.env.local
+app/.next/
+app/out/
+app/.turbo/
+
+# Database
+*.db
+*.sqlite3
+
+# Pre-commit and sync files
+.pre-commit-config.yaml
+Claude.md
+
+# Session tracking (personal, not committed)
+.sessions/SESSION.md
+.sessions/SESSION_*.md
+.sessions/*.backup.md

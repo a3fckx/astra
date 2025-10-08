@@ -68,12 +68,17 @@ import json
 import logging
 import os
 import re
+from dotenv import load_dotenv
 from typing import Any, Dict, Optional
+
+load_dotenv()  # Load .env secrets
 
 try:
     import requests
 except ModuleNotFoundError as exc:
-    raise SystemExit("The 'requests' package is required. Install it inside your virtualenv first.") from exc
+    raise SystemExit(
+        "The 'requests' package is required. Install it inside your virtualenv first."
+    ) from exc
 
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
@@ -86,7 +91,6 @@ ENVIRONMENT_OVERRIDES = {
     "elevenlabs_api_key": "ELEVENLABS_API_KEY",
     "agent_id": "ELEVENLABS_AGENT_ID",
     "signed_url": "ELEVENLABS_SIGNED_URL",
-    "voice_id": "ELEVENLABS_VOICE_ID",
     "language": "ELEVENLABS_AGENT_LANGUAGE",
     "user_id": "ELEVENLABS_USER_ID",
 }
@@ -162,7 +166,9 @@ def render_prompt(template_text: str, variables: Dict[str, str]) -> str:
     return out
 
 
-def build_init_client_data(cfg: Dict[str, Any], system_prompt: str, dyn_vars: Dict[str, str]) -> Dict[str, Any]:
+def build_init_client_data(
+    cfg: Dict[str, Any], system_prompt: str, dyn_vars: Dict[str, str]
+) -> Dict[str, Any]:
     """Build the conversation_initiation_client_data payload.
 
     Minimal by default: only override the system prompt and pass dynamic variables.
@@ -176,8 +182,6 @@ def build_init_client_data(cfg: Dict[str, Any], system_prompt: str, dyn_vars: Di
         agent_override["first_message"] = cfg.get("first_message")
 
     convo_override: Dict[str, Any] = {"agent": agent_override}
-    if cfg.get("override_tts") and cfg.get("voice_id"):
-        convo_override["tts"] = {"voice_id": cfg.get("voice_id")}
 
     return {
         "type": "conversation_initiation_client_data",
@@ -202,14 +206,18 @@ def resolve_wss_url(cfg: Dict[str, Any], api_key: Optional[str]) -> str:
         if not agent_id:
             raise SystemExit("Missing agent_id in config.json")
         if api_key:
-            print("[warn] auth_mode=public ignores ELEVENLABS_API_KEY; connection will assume a public agent.")
+            print(
+                "[warn] auth_mode=public ignores ELEVENLABS_API_KEY; connection will assume a public agent."
+            )
         return f"{WSS_BASE}?agent_id={agent_id}"
 
     # All other modes require a signed URL
     if not agent_id:
         raise SystemExit("Missing agent_id in config.json")
     if not api_key:
-        raise SystemExit("API key required to fetch signed URL. Set ELEVENLABS_API_KEY or elevenlabs_api_key in config.")
+        raise SystemExit(
+            "API key required to fetch signed URL. Set ELEVENLABS_API_KEY or elevenlabs_api_key in config."
+        )
 
     try:
         resp = requests.get(
@@ -242,7 +250,7 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
 
     api_key = os.getenv("ELEVENLABS_API_KEY") or cfg.get("elevenlabs_api_key")
     if not api_key:
-        raise SystemExit("Missing ELEVENLABS_API_KEY (env or config)")
+        raise SystemExit("Missing ELEVENLABS_API_KEY (.env or config)")
 
     wss_url = resolve_wss_url(cfg, api_key)
     logging.info("Connecting to %s", wss_url)
@@ -284,7 +292,11 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
                     current_mem = load_memory_buffer(cfg)
                     curr_vars = to_string_map(current_mem)
                     # Compute a small text diff of changed keys
-                    changed = [k for k in curr_vars.keys() if curr_vars.get(k, "") != last_vars.get(k, "")]
+                    changed = [
+                        k
+                        for k in curr_vars.keys()
+                        if curr_vars.get(k, "") != last_vars.get(k, "")
+                    ]
                     if not changed:
                         last_vars = curr_vars
                         continue
@@ -293,7 +305,7 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
                         continue
                     summary = "Context update: " + ", ".join(changed[:8])
                     if len(changed) > 8:
-                        summary += f" (+{len(changed)-8} more)"
+                        summary += f" (+{len(changed) - 8} more)"
                     logging.info("Contextual update (watcher): %s", summary)
                     payload = {
                         "type": "contextual_update",
@@ -340,7 +352,11 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
                             text = rec.get("text") or rec.get("message")
                             if not text:
                                 continue
-                            if target and active_conversation_id and target != active_conversation_id:
+                            if (
+                                target
+                                and active_conversation_id
+                                and target != active_conversation_id
+                            ):
                                 continue
                             if not active_conversation_id:
                                 continue
@@ -379,7 +395,9 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
                     ping = msg.get("ping_event", {})
                     event_id = ping.get("event_id")
                     if event_id is not None:
-                        await ws.send(json.dumps({"type": "pong", "event_id": event_id}))
+                        await ws.send(
+                            json.dumps({"type": "pong", "event_id": event_id})
+                        )
                 elif mtype == "conversation_initiation_metadata":
                     meta = msg.get("conversation_initiation_metadata_event", {})
                     conv_id = meta.get("conversation_id")
@@ -387,7 +405,10 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
                         active_conversation_id = conv_id
                         logging.info("Conversation ready (id=%s)", conv_id)
                     if conv_id and cfg.get("log_transcripts_to_file"):
-                        os.makedirs(os.path.dirname(cfg["log_transcripts_to_file"]), exist_ok=True)
+                        os.makedirs(
+                            os.path.dirname(cfg["log_transcripts_to_file"]),
+                            exist_ok=True,
+                        )
                 elif mtype == "user_transcript":
                     ut = msg.get("user_transcription_event", {})
                     text = ut.get("user_transcript")
@@ -425,19 +446,27 @@ async def run_websocket(cfg: Dict[str, Any], init_msg: Dict[str, Any]) -> None:
                             result = {"messages": transcript[-n:]}
                         else:
                             raise ValueError(f"Unsupported tool: {tool}")
-                        await ws.send(json.dumps({
-                            "type": "client_tool_result",
-                            "tool_call_id": call_id,
-                            "result": result,
-                            "is_error": False,
-                        }))
+                        await ws.send(
+                            json.dumps(
+                                {
+                                    "type": "client_tool_result",
+                                    "tool_call_id": call_id,
+                                    "result": result,
+                                    "is_error": False,
+                                }
+                            )
+                        )
                     except Exception as e:
-                        await ws.send(json.dumps({
-                            "type": "client_tool_result",
-                            "tool_call_id": call_id,
-                            "result": str(e),
-                            "is_error": True,
-                        }))
+                        await ws.send(
+                            json.dumps(
+                                {
+                                    "type": "client_tool_result",
+                                    "tool_call_id": call_id,
+                                    "result": str(e),
+                                    "is_error": True,
+                                }
+                            )
+                        )
         except websockets.ConnectionClosedError as exc:
             logging.error("WebSocket closed: code=%s reason=%s", exc.code, exc.reason)
             raise
@@ -448,11 +477,22 @@ def main() -> int:
 
     --dry prints the init payload instead of opening a WebSocket.
     """
-    parser = argparse.ArgumentParser(description="Minimal ElevenLabs Agent runner (WebSocket)")
-    parser.add_argument("-c", "--config", default="config.json", help="Path to config.json")
-    parser.add_argument("--dry", action="store_true", help="Print init payload and exit")
-    parser.add_argument("--enqueue-update", help="Append a contextual_update to the updates queue and exit")
-    parser.add_argument("--conversation-id", help="Target conversation_id for the enqueued update")
+    parser = argparse.ArgumentParser(
+        description="Minimal ElevenLabs Agent runner (WebSocket)"
+    )
+    parser.add_argument(
+        "-c", "--config", default="config.json", help="Path to config.json"
+    )
+    parser.add_argument(
+        "--dry", action="store_true", help="Print init payload and exit"
+    )
+    parser.add_argument(
+        "--enqueue-update",
+        help="Append a contextual_update to the updates queue and exit",
+    )
+    parser.add_argument(
+        "--conversation-id", help="Target conversation_id for the enqueued update"
+    )
     args = parser.parse_args()
 
     cfg = apply_env_overrides(load_config(args.config))
@@ -471,13 +511,21 @@ def main() -> int:
     mem = load_memory_buffer(cfg)
     dyn_vars = to_string_map(mem)
 
-    prompt_text = read_text(cfg.get("responder_template_path", "responder.md")) if cfg.get("prompt_override", True) else ""
+    prompt_text = (
+        read_text(cfg.get("responder_template_path", "responder.md"))
+        if cfg.get("prompt_override", True)
+        else ""
+    )
     system_prompt = render_prompt(prompt_text, dyn_vars) if prompt_text else ""
 
     init_msg = build_init_client_data(cfg, system_prompt, dyn_vars)
 
     if args.dry:
-        print(json.dumps({"wss": WSS_BASE, "init": init_msg}, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"wss": WSS_BASE, "init": init_msg}, indent=2, ensure_ascii=False
+            )
+        )
         return 0
 
     asyncio.run(run_websocket(cfg, init_msg))

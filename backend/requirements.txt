@@ -1,0 +1,28 @@
+# Core web framework
+fastapi>=0.104.0,<1.0.0
+uvicorn[standard]>=0.24.0,<1.0.0
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
+
+# Database (async driver)
+motor>=3.5.1
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0,<4.0.0
+passlib[bcrypt]>=1.7.4,<2.0.0
+authlib>=1.2.0,<2.0.0
+pyjwt>=2.8.0,<3.0.0
+
+# External APIs
+websockets>=12.0,<13.0
+requests>=2.31.0,<3.0.0
+elevenlabs>=0.2.0,<1.0.0  # Optional, for SDK approach
+
+# Astrology (planned) - optional, add later when needed
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
+python-multipart>=0.0.6,<1.0.0  # For form data
+
+# Production
+gunicorn>=21.2.0,<22.0.0  # Production WSGI server
