@@ -38,6 +38,7 @@ app/.env
 app/.env.development.local
 app/.env.test.local
 app/.env.production.local
+app/package-lock.json
 
 Claude.md
 

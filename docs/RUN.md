@@ -8,7 +8,7 @@ The legacy ElevenLabs Python runner has been removed. Follow these steps to run 
 
 ```bash
 cd app
-npm install
+bun install
 ```
 
 ---
@@ -35,17 +35,17 @@ Keep secrets out of version control.
 ## 3. Run the App
 
 ```bash
-npm run dev         # http://localhost:3000
+bun run dev         # http://localhost:3000
 ```
 
-Use `npm run build && npm run start` for a production build.
+Use `bun run build && bun run start` for a production build.
 
 ---
 
 ## 4. Lint / Format
 
 ```bash
-npm run lint        # Uses Biome for TypeScript + formatting
+bun run lint        # Uses Biome for TypeScript + formatting
 ```
 
 ---

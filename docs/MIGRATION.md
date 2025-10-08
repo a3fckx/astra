@@ -18,7 +18,7 @@ This document captures the clean-up that removed the FastAPI monolith and explai
 - Only the Next.js app remains in this repository.
 - Personas and agent assets live under `agents/`.
 - Julep handles agent execution; no local Python services.
-- Biome (`npm run lint`) replaces the previous Ruff/Pyre pipeline.
+- Biome (`bun run lint`) replaces the previous Ruff/Pyre pipeline.
 
 ---
 

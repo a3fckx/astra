@@ -67,19 +67,19 @@ Reference material inside Julep workspace:
 ## Build / Lint / Run
 
 ```bash
-# Install dependencies
+# Install dependencies (Bun)
 cd app
-npm install
+bun install
 
 # Development server (http://localhost:3000)
-npm run dev
+bun run dev
 
 # Type-safe formatting + linting (Biome)
-npm run lint
+bun run lint
 
 # Production build
-npm run build
-npm run start
+bun run build
+bun run start
 ```
 
 Environment variables (stored in `app/.env` — never commit secrets):
@@ -118,7 +118,7 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 - Use async/await for data fetching inside server actions; handle errors with meaningful responses.
 - Keep React components small and focused; colocate related utilities under `app/src/lib/`.
 - Validate external inputs (API routes) and return typed payloads.
-- Employ Biome (`npm run lint`) before committing.
+- Employ Biome (`bun run lint`) before committing.
 
 ### Environment Handling
 

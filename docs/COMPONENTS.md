@@ -69,14 +69,14 @@ Store secrets (API keys, voice IDs) inside Julep Secrets and reference them from
 ## Tooling
 
 - **Package scripts** (see `app/package.json`):
-  - `npm run dev` — Next.js dev server
-  - `npm run lint` — `biome check --fix src`
-  - `npm run build` / `npm run start`
+  - `bun run dev` — Next.js dev server
+  - `bun run lint` — `biome check --fix src`
+  - `bun run build` / `bun run start`
 - **Biome configuration:** `app/biome.json`
 - **TypeScript configuration:** `app/tsconfig.json`
 - **Environment template:** `app/.env.example`
 
-Run `npm run lint` before committing changes.
+Run `bun run lint` before committing changes.
 
 ---
 

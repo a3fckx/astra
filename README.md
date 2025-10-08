@@ -41,35 +41,32 @@ astra/
 ## Getting Started
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (Bun is the default package manager)
 cd app
-npm install
+bun install
 
 # 2. Configure environment
 cp .env.example .env
 # Fill in MongoDB + Google OAuth + Better Auth secret
 
 # 3. Run the app
-npm run dev        # http://localhost:3000
+bun run dev        # http://localhost:3000
 ```
 
-Prefer Bun for faster installs? Next.js 15 runs fine on Bun ≥1.1:
+Other scripts:
 
 ```bash
-# Optional: using Bun instead of npm
-cd app
-bun install
-bun run dev
+bun run lint
+bun run build
+bun run start
 ```
-
-> We still ship `package-lock.json` for npm compatibility. If you standardize on Bun, commit the generated `bun.lockb` and remove the npm lockfile to avoid drift.
 
 Available scripts:
 
 ```bash
-npm run lint       # Biome check/format (fixes in-place)
-npm run build      # Production build
-npm run start      # Start built app
+bun run lint       # Biome check/format (fixes in-place)
+bun run build      # Production build
+bun run start      # Start built app
 ```
 
 Environment variables (stored in `app/.env`, never committed):
@@ -113,7 +110,7 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for expectations.
 
 ## Conventions
 
-- **Code quality:** Run `npm run lint` (Biome) before committing.
+- **Code quality:** Run `bun run lint` (Biome) before committing.
 - **TypeScript:** Treat `app/src/lib/env.ts` as the canonical env loader — validate and document new variables there.
 - **Secrets:** Never commit real API keys. Keep `.env.example` in sync with required variables.
 - **Persona updates:** Edit `agents/responder/prompt.md` and reflect changes in `docs/PERSONA.md`.
