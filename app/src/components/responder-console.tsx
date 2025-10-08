@@ -207,6 +207,7 @@ export function ResponderConsole({ userId }: ResponderConsoleProps) {
 					}}
 				/>
 				<button
+					type="button"
 					onClick={sendMessage}
 					disabled={pending}
 					style={{

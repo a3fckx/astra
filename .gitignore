@@ -1,52 +1,29 @@
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
+/.DS_Store
+Thumbs.db
 
 # Environment files
 .env
 .env.local
 .env.*.local
+.env.bak
 
-# UV cache
-.uv-cache/
-
-# OS files
-.DS_Store
-Thumbs.db
+# Workspace venvs (optional local tooling)
+.venv/
+/venv/
+/env/
 
 # Logs and runtime artifacts
 *.log
 *.tmp
-buffer/updates.ndjson
-backend/app/buffer/updates.ndjson
 
-# IDE
+# Editor state
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# App service
+# Next.js build artifacts
 app/node_modules/
 app/dist/
 app/.vite/
@@ -55,12 +32,11 @@ app/.next/
 app/out/
 app/.turbo/
 
-# Database
-*.db
-*.sqlite3
+app/.env
+app/.env.development.local
+app/.env.test.local
+app/.env.production.local
 
-# Pre-commit and sync files
-.pre-commit-config.yaml
 Claude.md
 
 # Session tracking (personal, not committed)

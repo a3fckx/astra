@@ -22,6 +22,7 @@ export function GoogleSignInButton() {
 
 	return (
 		<button
+			type="button"
 			onClick={handleClick}
 			disabled={loading}
 			style={{
@@ -59,6 +60,7 @@ export function SignOutButton() {
 
 	return (
 		<button
+			type="button"
 			onClick={handleSignOut}
 			disabled={loading}
 			style={{

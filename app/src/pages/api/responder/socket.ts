@@ -1,8 +1,8 @@
-import type { IncomingMessage } from "http";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
+import type { Socket } from "node:net";
+import { parse } from "node:url";
 import type { ChangeStream } from "mongodb";
-import type { Socket } from "net";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { parse } from "url";
 import { type WebSocket, WebSocketServer } from "ws";
 import { auth } from "@/lib/auth";
 import { getResponderEvents } from "@/lib/mongo";
@@ -13,9 +13,13 @@ export const config = {
 	},
 };
 
+type ResolverServer = HttpServer & {
+	resolverWss?: WebSocketServer;
+};
+
 type SocketResponse = NextApiResponse & {
 	socket: NextApiResponse["socket"] & {
-		server?: any;
+		server?: ResolverServer;
 	};
 };
 
@@ -143,8 +147,7 @@ export default async function handler(
 	}
 
 	const { socket } = res;
-	const server =
-		socket?.server ?? (socket as unknown as { server?: any }).server;
+	const server = socket?.server as ResolverServer | undefined;
 
 	if (!server) {
 		res.status(500).json({ error: "Server instance unavailable" });

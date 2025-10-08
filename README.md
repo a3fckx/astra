@@ -1,295 +1,127 @@
-# Astra - Astrology Conversational AI
+# Astra — Astrology Companion
 
-Multi-user astrology conversational AI agent (Jadugar) combining voice conversations, personalized birth chart analysis, and real-time astrological guidance.
+Astra delivers a multi-user astrology assistant (“Jadugar”) with Google sign-in, Mongo-backed persistence, and Julep-managed agent workflows. The stack is now 100% Next.js — legacy Python services have been retired.
 
-## Architecture
+---
 
-**Current layout:**
-- **Gateway:** Next.js 14 + Better Auth (Google OAuth, session cookies, responder console)
-- **Agents:** Python FastAPI monolith (ElevenLabs orchestration, background workers)
+## Architecture Snapshot
 
 ```
-┌─────────────────────────────────────────────────────┐
-│               Next.js Auth Gateway                  │
-│  (Better Auth, REST ingress, WebSocket streaming)   │
-└─────────────┬───────────────────────────────────────┘
-              │ writes/streams via MongoDB
-              ▼
-┌─────────────────────────────────────────────────────┐
-│                 MongoDB Atlas Cluster                │
-│  users, sessions, responder_outbox, responder_events │
-└─────────────┬───────────────────────────────────────┘
-              │ polls + publishes
-              ▼
-┌─────────────────────────────────────────────────────┐
-│             Python FastAPI Agent Mesh               │
-│  ElevenLabs runner, memory buffer, background jobs  │
-└─────────────────────────────────────────────────────┘
-
-Browser ⇄ Next.js (cookies + WebSocket) ⇄ MongoDB ⇄ FastAPI ⇄ ElevenLabs
+Browser
+  │
+  ▼
+Next.js (App Router, Better Auth, REST + WebSocket routes)
+  │ MongoDB Atlas (users, sessions, responder queues)
+  ▼
+Julep Agents (tasks, docs, secrets, background workflows)
 ```
 
-## Quick Start
+- **Authentication:** Better Auth Google provider + Mongo adapter.
+- **Responder Surface:** `/api/responder/messages` REST endpoint and `/api/responder/socket` WebSocket stream.
+- **Agents & Memory:** Julep project `astra` holds users, docs (`type=profile|preferences|notes`), and task automation.
+- **Persona Assets:** Stored under `agents/` (e.g., `agents/responder/prompt.md`).
 
-### Backend Setup
+---
 
-```bash
-# Navigate to backend
-cd backend
-
-# Create virtual environment with uv
-uv venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# Install dependencies
-uv pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your credentials
-
-# Run development server
-python -m app.main
-```
-
-Backend will be available at:
-- API: http://localhost:8000
-- Docs: http://localhost:8000/docs
-- Health: http://localhost:8000/api/health
-
-### App Service Setup
-
-```bash
-# Navigate to app service
-cd app
-
-# Install dependencies
-npm install
-
-# Copy environment template
-cp .env.example .env
-# Edit .env with MongoDB username/password (or full URI), Better Auth secret, Google credentials
-
-# Run development server (http://localhost:3000)
-npm run dev
-```
-
-## Session Tracking
-
-Track your current work in `.sessions/SESSION.md` (gitignored, not committed):
-
-```bash
-# Start new session
-./session.sh start
-
-# Edit session notes
-./session.sh edit
-
-# View current session
-./session.sh view
-
-# Backup session with timestamp (when done)
-./session.sh backup
-
-# Clear session (start fresh)
-./session.sh clear
-```
-
-**Files:**
-- `.sessions/SESSION.md` - Active session tracking (gitignored)
-- `.sessions/template.md` - Template for new sessions
-
-**Use for:**
-- Tracking changes made during development
-- Noting todos, decisions, and blockers
-- Quick command reference
-- Session notes and progress
-
-**Important:** Don't create summary files. Use `.sessions/SESSION.md` for all tracking.
-
-## Project Structure
+## Project Layout
 
 ```
 astra/
-├── backend/                  # Python FastAPI monolith (agents + internal APIs)
-│   ├── app/
-│   │   ├── api/             # REST + WebSocket routes
-│   │   ├── core/            # Business logic
-│   │   ├── services/        # External services (Google, ElevenLabs, MongoDB)
-│   │   ├── models/          # Pydantic models
-│   │   ├── utils/           # Utilities
-│   │   ├── workers/         # Background workers
-│   │   ├── config.py        # Configuration
-│   │   └── main.py          # FastAPI app
-│   ├── scripts/             # Standalone scripts
-│   ├── tests/               # Tests
-│   └── requirements.txt     # Dependencies
-│
-├── app/                      # Next.js gateway (Better Auth + dashboard)
-│   ├── src/
-│   │   ├── app/             # App Router routes (pages + API handlers)
-│   │   ├── components/      # Client/server React components
-│   │   └── lib/             # Better Auth config, Mongo helpers, clients
-│   ├── package.json
-│   └── next.config.mjs
-│
-├── shared/                   # Shared resources
-│   ├── prompts/             # Agent prompts (Jadugar persona)
-│   └── config/              # Config templates
-│
-├── docs/                     # Documentation
-│   ├── ARCHITECTURE.md      # System architecture
-│   ├── COMPONENTS.md        # Component reference
-│   ├── PERSONA.md           # Jadugar specifications
-│   ├── MEMORY_BUFFER.md     # Context buffer reference
-│   └── WORKFLOWS.md         # Process flows
-│
-└── AGENTS.md                 # Agent directives (for AI)
+├── app/                # Next.js application
+│   ├── src/app/        # Routes (App Router) + dashboard
+│   ├── src/lib/        # Auth, env, Mongo helpers
+│   ├── src/components/ # UI widgets (auth buttons, console)
+│   └── package.json    # Scripts + Biome config
+├── agents/             # Agent prompts and documentation
+└── docs/               # Contributor and agent documentation
 ```
 
-## Technology Stack
+---
 
-### Gateway
-- **Framework:** Next.js 14 (App Router) + React 18
-- **Auth:** Better Auth (Google social provider, Mongo adapter)
-- **Language:** TypeScript
-- **Realtime:** `ws` WebSocket server bridged through Next.js API routes
-
-### Agents / Backend
-- **Framework:** FastAPI 0.104+
-- **Runtime:** Python 3.9+, asyncio workers
-- **External APIs:** ElevenLabs Conversational AI (voice streaming)
-- **Database:** MongoDB Atlas (shared with gateway)
-- **Astrology:** flatlib/swisseph (planned)
-
-## Features
-
-### ✅ Implemented
-- Next.js control center with Google sign-in (Better Auth)
-- Session-aware responder dashboard + WebSocket streaming
-- MongoDB-backed responder queues (`responder_outbox`, `responder_events`)
-- FastAPI monolith with ElevenLabs runner + memory buffer
-- Google People API DOB extraction (Python service)
-- Session tracking workflow for contributors
-
-### 🚧 In Progress / Planned
-- Background analyzer to enrich astro insights automatically
-- Astrology utilities (chart calculation, transit mapping)
-- Additional scopes (e.g., Gmail read) wiring inside agents
-- Production hardening (queue abstraction, observability, deployment scripts)
-
-## Development
-
-### Backend Development
+## Getting Started
 
 ```bash
-cd backend
-
-# Run with auto-reload
-python -m app.main
-
-# Or with uvicorn
-uvicorn app.main:app --reload
-
-# Run tests
-pytest
-
-# Format code
-black app/
-isort app/
-
-# Lint
-flake8 app/
-```
-
-### Environment Variables
-
-Required in `.env`:
-- `MONGODB_USERNAME`, `MONGODB_PASSWORD`, `MONGODB_CLUSTER`
-- `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `SECRET_KEY` (generate with: `openssl rand -hex 32`)
-
-See `.env.example` for full list.
-
-## Documentation
-
-### For Developers
-- [Architecture Overview](docs/ARCHITECTURE.md) - System design
-- [Component Reference](docs/COMPONENTS.md) - Technical deep-dive
-- [Workflows](docs/WORKFLOWS.md) - Process flows
-- [Backend README](backend/README.md) - Backend setup
-
-### For AI Agents
-- [AGENTS.md](AGENTS.md) - Directives for coding agents
-
-### For Persona Design
-- [Jadugar Persona](docs/PERSONA.md) - Agent specifications
-- [Memory Buffer](docs/MEMORY_BUFFER.md) - Context structure
-
-## Configuration
-
-Configuration is loaded with priority:
-1. Environment variables (.env) - **Highest priority**
-2. shared/config/defaults.json - Fallback defaults
-
-## Deployment
-
-### Backend (Production)
-
-```bash
-cd backend
-
-# Install dependencies
-uv pip install -r requirements.txt
-
-# Run with gunicorn
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
-```
-
-### App Service (Production)
-
-```bash
+# 1. Install dependencies
 cd app
+npm install
 
-# Build production output
-npm run build
+# 2. Configure environment
+cp .env.example .env
+# Fill in MongoDB + Google OAuth + Better Auth secret
 
-# Serve with `npm run start` or deploy via Vercel/Node hosting
+# 3. Run the app
+npm run dev        # http://localhost:3000
 ```
 
-## External Services Setup
+Available scripts:
 
-### Google Cloud (OAuth)
-- Project ID: astra-474015
-- Enable APIs: People API, Gmail API (optional)
-- Create OAuth 2.0 credentials
-- Add redirect URI: `http://localhost:8000/api/auth/google/callback` (dev)
+```bash
+npm run lint       # Biome check/format (fixes in-place)
+npm run build      # Production build
+npm run start      # Start built app
+```
 
-### MongoDB Atlas
-- Create serverless cluster
-- Get connection string
-- Set in `MONGODB_URI` environment variable
+Environment variables (stored in `app/.env`, never committed):
 
-### ElevenLabs
-- Create account
-- Get API key
-- Create conversational AI agent
-- Set `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID`
+- `MONGODB_URI` **or** `MONGODB_USERNAME` / `MONGODB_PASSWORD` / `MONGODB_CLUSTER`
+- `MONGODB_DB` (default: `astra`)
+- `BETTER_AUTH_SECRET`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+- `GOOGLE_ENABLE_BIRTHDAY_SCOPE` (default `true`)
+- `GOOGLE_ENABLE_GMAIL_READ_SCOPE` (default `false`)
+- `NEXT_PUBLIC_APP_URL` (optional, e.g., deployment base URL)
 
-## Contributing
+---
 
-1. Follow semantic commit messages (`feat:`, `fix:`, `docs:`, etc.)
-2. Run tests and linting before committing
-3. Update documentation for new features
-4. Keep backend logic in backend/, app service components in app/
+## Working with Julep
+
+Use the pre-provisioned Julep project `astra`:
+
+- Create users: `client.users.create(project="astra")`
+- Seed docs: create at least `type=profile` and `type=preferences` with metadata (`scope`, `updated_by`, `timestamp_iso`)
+- Store secrets (e.g., `JULEP_API_KEY`, external model/API keys) in Julep Secrets
+- Background automation should run as durable Julep tasks that write back to the same docs
+- Conversation summaries and memory updates belong in user docs, not the Next.js filesystem
+
+---
+
+## Session Tracking
+
+Keep active notes in `.sessions/SESSION.md`:
+
+```bash
+./session.sh start   # create from template
+./session.sh view    # display current notes
+./session.sh backup  # archive with timestamp
+./session.sh clear   # remove when finished
+```
+
+See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for expectations.
+
+---
+
+## Conventions
+
+- **Code quality:** Run `npm run lint` (Biome) before committing.
+- **TypeScript:** Treat `app/src/lib/env.ts` as the canonical env loader — validate and document new variables there.
+- **Secrets:** Never commit real API keys. Keep `.env.example` in sync with required variables.
+- **Persona updates:** Edit `agents/responder/prompt.md` and reflect changes in `docs/PERSONA.md`.
+- **Git workflow:** Main holds the historical snapshot; new work occurs on feature branches (e.g., `dev`).
+
+---
+
+## Reference Docs
+
+- 📘 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System overview
+- 🔄 [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) — Auth + responder flows
+- 🧩 [`docs/COMPONENTS.md`](docs/COMPONENTS.md) — Module breakdown
+- 👤 [`docs/PERSONA.md`](docs/PERSONA.md) — Jadugar voice & tone
+- 📝 [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) — Session workflow
+
+---
 
 ## License
 
-Proprietary - All rights reserved
+Proprietary — All rights reserved.
 
-## Support
-
-- Documentation: See `docs/` folder
-- Issues: Create GitHub issue
-- Contact: [Your contact info]
+For questions or support, create a GitHub issue or consult the latest session notes.

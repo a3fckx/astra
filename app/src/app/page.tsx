@@ -29,7 +29,7 @@ export default async function LandingPage() {
 						opacity: 0.65,
 					}}
 				>
-					Astra // Conversational Agents
+					Astra {/* Conversational Agents */}
 				</p>
 				<h1
 					style={{
@@ -49,8 +49,8 @@ export default async function LandingPage() {
 					}}
 				>
 					Sign in with Google to access your personalized responders, manage
-					scopes, and synchronize with the Python agent cloud. Better Auth keeps
-					sessions secure while our FastAPI workers handle voice intelligence.
+					scopes, and synchronize with Julep-managed agents. Better Auth keeps
+					sessions secure while background tasks handle voice intelligence.
 				</p>
 			</div>
 
