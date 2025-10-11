@@ -40,6 +40,11 @@ function asObjectId(id?: string | ObjectId | null) {
 	}
 }
 
+/**
+ * ANCHOR:outbox-reservation
+ * Grab the oldest pending outbox entry so we maintain strict FIFO delivery
+ * and can recover safely if the worker crashes mid-turn.
+ */
 async function reserveNextMessage() {
 	const outbox = getResponderOutbox();
 
@@ -83,6 +88,12 @@ async function markOutboxStatus(
 	);
 }
 
+/**
+ * ANCHOR:event-status-mirror
+ * When the worker changes delivery state we reflect that onto the user event
+ * the dashboard already rendered. This mimics ChatKit's status pills so the UI
+ * can show "queued → processing → delivered/failed" without extra polling.
+ */
 async function updateUserEventStatus(
 	outboxId: ObjectId | undefined,
 	status: "queued" | "processing" | "delivered" | "failed",
@@ -114,6 +125,10 @@ async function updateUserEventStatus(
 	);
 }
 
+/**
+ * Inserts an assistant event for the current workflow. Metadata includes the
+ * workerId so we can trace which orchestrator produced the turn.
+ */
 async function emitAssistantEvent(
 	userId: string,
 	workflowId: string | undefined,
@@ -180,6 +195,12 @@ function extractAssistantContent(response: Awaited<
 	return content.trim();
 }
 
+/**
+ * ANCHOR:responder-turn
+ * Core responder loop: claim the pending prompt, reuse the Julep session for
+ * recall, emit the assistant reply, mirror status, and optionally stream audio.
+ * Any thrown error is caught higher up where we emit a user-visible failure.
+ */
 async function processMessage(message: ResponderOutboxMessage) {
 	const outboxId = asObjectId(message._id);
 	const workflowId = message.workflowId ?? WORKFLOW_ID;

@@ -5,6 +5,12 @@ import { getResponderEvents, getResponderOutbox } from "@/lib/mongo";
 
 const MAX_MESSAGE_LENGTH = 2000;
 
+/**
+ * Handles responder prompt ingress by validating the Better Auth session and
+ * recording the turn in both the durable outbox queue and the responder_events
+ * stream. This keeps realtime ChatKit-compatible clients and background
+ * workers in lockstep without blocking the caller on model execution.
+ */
 export async function POST(request: Request) {
 	const session = await auth.api.getSession({
 		headers: request.headers,
@@ -58,6 +64,12 @@ export async function POST(request: Request) {
 			? (metadata as Record<string, unknown>)
 			: undefined;
 
+	/**
+	 * ANCHOR:workflow-routing
+	 * We persist the OpenAI-style workflowId so clients (and future ChatKit adapters)
+	 * can fan out different agent personas without changing ingress semantics.
+	 * Defaulting to WORKFLOW_ID keeps single-agent dashboards working out of the box.
+	 */
 	const resolvedWorkflowId =
 		typeof workflowId === "string" && workflowId.trim().length > 0
 			? workflowId.trim()
@@ -97,6 +109,11 @@ export async function POST(request: Request) {
 	return NextResponse.json({ ok: true });
 }
 
+/**
+ * Returns the latest responder events so a reconnecting dashboard (or any
+ * ChatKit client) can hydrate its timeline without replaying the entire queue.
+ * Events are filtered by workflowId so multi-agent UIs only render their lane.
+ */
 export async function GET(request: Request) {
 	const session = await auth.api.getSession({
 		headers: request.headers,

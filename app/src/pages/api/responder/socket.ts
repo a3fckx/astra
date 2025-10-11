@@ -51,6 +51,11 @@ const sendError = (ws: ResponderSocket, message: string, code?: string) => {
 	});
 };
 
+/**
+ * Hydrates a websocket with the caller's Julep session, preloads recent events,
+ * and sends the initial ChatKit-style connected payload. This mirrors the
+ * hosted ChatKit server while reading from our Mongo/Julep stores.
+ */
 async function initializeResponderSession(ws: ResponderSocket) {
 	if (!ws.session) {
 		throw new Error("Missing session context");
@@ -75,10 +80,7 @@ async function initializeResponderSession(ws: ResponderSocket) {
 	const recentEvents = await events
 		.find({
 			userId: ws.session.userId,
-			$or: [
-				{ workflowId: { $exists: false } },
-				{ workflowId },
-			],
+			$or: [{ workflowId: { $exists: false } }, { workflowId }],
 		})
 		.sort({ createdAt: -1 })
 		.limit(100)
@@ -89,6 +91,7 @@ async function initializeResponderSession(ws: ResponderSocket) {
 		data: recentEvents
 			.map((event) => ({
 				id: event._id?.toString() ?? `event-${event.createdAt.getTime()}`,
+				workflowId: event.workflowId ?? workflowId,
 				role: event.role,
 				content: event.content,
 				createdAt: event.createdAt.toISOString(),
@@ -107,6 +110,11 @@ async function initializeResponderSession(ws: ResponderSocket) {
 	});
 }
 
+/**
+ * Subscribes the websocket to Mongo change streams so every new responder event
+ * is broadcast as a ChatKit-compatible delta. The stream is keyed by workflowId
+ * so clients can switch personas without opening a second socket.
+ */
 async function subscribeToResponderEvents(ws: ResponderSocket) {
 	if (!ws.session) {
 		throw new Error("Missing session context for change stream");
@@ -123,11 +131,11 @@ async function subscribeToResponderEvents(ws: ResponderSocket) {
 						"fullDocument.userId": ws.session.userId,
 						...(workflowId
 							? {
-								$or: [
-									{ "fullDocument.workflowId": workflowId },
-									{ "fullDocument.workflowId": { $exists: false } },
-								],
-							}
+									$or: [
+										{ "fullDocument.workflowId": workflowId },
+										{ "fullDocument.workflowId": { $exists: false } },
+									],
+								}
 							: {}),
 						operationType: { $in: ["insert", "update", "replace"] },
 					},
@@ -144,6 +152,10 @@ async function subscribeToResponderEvents(ws: ResponderSocket) {
 				return;
 			}
 
+			// ANCHOR:change-stream-delta
+			// Emitting workflow-aware deltas keeps the ChatKit UI identical to OpenAI's:
+			// clients expect the server to stream serialized thread items,
+			// while we still source storage from Mongo instead of the hosted service.
 			sendJSON(ws, {
 				type: "messages:append",
 				data: {
@@ -239,15 +251,15 @@ export default async function handler(
 						return;
 					}
 
-				wss.handleUpgrade(upgradeRequest, upgradeSocket, head, (ws) => {
-					const responderSocket = ws as ResponderSocket;
-					responderSocket.session = {
-						userId: session.user.id,
-						email: session.user.email ?? "",
-						workflowId: WORKFLOW_ID,
-					};
-					wss.emit("connection", responderSocket, upgradeRequest);
-				});
+					wss.handleUpgrade(upgradeRequest, upgradeSocket, head, (ws) => {
+						const responderSocket = ws as ResponderSocket;
+						responderSocket.session = {
+							userId: session.user.id,
+							email: session.user.email ?? "",
+							workflowId: WORKFLOW_ID,
+						};
+						wss.emit("connection", responderSocket, upgradeRequest);
+					});
 				} catch (error) {
 					console.error("Failed to authorize websocket", error);
 					upgradeSocket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
@@ -256,17 +268,17 @@ export default async function handler(
 			},
 		);
 
-			wss.on("connection", async (socket) => {
-				const ws = socket as ResponderSocket;
-				const email = ws.session?.email ?? "unknown";
-				if (ws.session) {
-					ws.session.workflowId = ws.session.workflowId ?? WORKFLOW_ID;
-				}
+		wss.on("connection", async (socket) => {
+			const ws = socket as ResponderSocket;
+			const email = ws.session?.email ?? "unknown";
+			if (ws.session) {
+				ws.session.workflowId = ws.session.workflowId ?? WORKFLOW_ID;
+			}
 
-				console.log(`Responder websocket connected: ${email}`);
+			console.log(`Responder websocket connected: ${email}`);
 
-				try {
-					await initializeResponderSession(ws);
+			try {
+				await initializeResponderSession(ws);
 				await subscribeToResponderEvents(ws);
 			} catch (error) {
 				const err = error as Error & { code?: string };
@@ -276,82 +288,91 @@ export default async function handler(
 				return;
 			}
 
-				ws.on("message", async (raw) => {
-					try {
-						const decoded = JSON.parse(raw.toString());
-						if (decoded?.type === "heartbeat") {
-							sendJSON(ws, { type: "heartbeat", ts: Date.now() });
-							return;
-						}
-						if (decoded?.type === "hello") {
-							const incomingWorkflow =
-								typeof decoded.workflowId === "string" && decoded.workflowId.trim().length > 0
-									? decoded.workflowId.trim()
-									: WORKFLOW_ID;
-							if (!ws.session) {
-								ws.session = {
-									userId: "unknown",
-									email: "unknown",
-									workflowId: incomingWorkflow,
-								};
-							} else if (ws.session.workflowId !== incomingWorkflow) {
-								ws.session.workflowId = incomingWorkflow;
-								if (ws.changeStream) {
-									try {
-										await ws.changeStream.close();
-									} catch (closeError) {
-										console.error("Failed to close existing change stream:", closeError);
-									}
+			ws.on("message", async (raw) => {
+				try {
+					const decoded = JSON.parse(raw.toString());
+					if (decoded?.type === "heartbeat") {
+						sendJSON(ws, { type: "heartbeat", ts: Date.now() });
+						return;
+					}
+					if (decoded?.type === "hello") {
+						const incomingWorkflow =
+							typeof decoded.workflowId === "string" &&
+							decoded.workflowId.trim().length > 0
+								? decoded.workflowId.trim()
+								: WORKFLOW_ID;
+						// ANCHOR:workflow-hot-swap
+						// ChatKit clients renegotiate workflow/channel without a full reconnect.
+						// When the workflow changes we rewire the Mongo change stream so the user
+						// only sees that agent's transcript.
+						if (!ws.session) {
+							ws.session = {
+								userId: "unknown",
+								email: "unknown",
+								workflowId: incomingWorkflow,
+							};
+						} else if (ws.session.workflowId !== incomingWorkflow) {
+							ws.session.workflowId = incomingWorkflow;
+							if (ws.changeStream) {
+								try {
+									await ws.changeStream.close();
+								} catch (closeError) {
+									console.error(
+										"Failed to close existing change stream:",
+										closeError,
+									);
 								}
-								await subscribeToResponderEvents(ws);
 							}
+							await subscribeToResponderEvents(ws);
+						}
+						return;
+					}
+					if (decoded?.type === "chat" && typeof decoded.text === "string") {
+						const text = decoded.text.trim();
+						if (!text) {
 							return;
 						}
-						if (decoded?.type === "chat" && typeof decoded.text === "string") {
-							const text = decoded.text.trim();
-							if (!text) {
-								return;
-							}
 
-							const now = new Date();
-							const outbox = getResponderOutbox();
-							const events = getResponderEvents();
-							const incomingMetadata =
-								decoded.metadata && typeof decoded.metadata === "object"
-									? (decoded.metadata as Record<string, unknown>)
-									: undefined;
-							const workflowId =
-								typeof decoded.workflowId === "string" && decoded.workflowId.trim().length > 0
-									? decoded.workflowId.trim()
-									: ws.session?.workflowId ?? WORKFLOW_ID;
-							if (ws.session) {
-								ws.session.workflowId = workflowId;
-							}
-
-							const insertResult = await outbox.insertOne({
-								userId: ws.session?.userId ?? "unknown",
-								workflowId,
-								content: text,
-								createdAt: now,
-								status: "pending" as const,
-								metadata: incomingMetadata ?? null,
-							});
-
-							await events.insertOne({
-								userId: ws.session?.userId ?? "unknown",
-								workflowId,
-								role: "user" as const,
-								content: text,
-								createdAt: now,
-								metadata: {
-									outboxId: insertResult.insertedId?.toString(),
-									status: "queued",
-									source: "socket",
-									workflowId,
-									payload: incomingMetadata,
-								},
-							});
+						const now = new Date();
+						const outbox = getResponderOutbox();
+						const events = getResponderEvents();
+						const incomingMetadata =
+							decoded.metadata && typeof decoded.metadata === "object"
+								? (decoded.metadata as Record<string, unknown>)
+								: undefined;
+						const workflowId =
+							typeof decoded.workflowId === "string" &&
+							decoded.workflowId.trim().length > 0
+								? decoded.workflowId.trim()
+								: (ws.session?.workflowId ?? WORKFLOW_ID);
+						if (ws.session) {
+							ws.session.workflowId = workflowId;
 						}
+
+						const insertResult = await outbox.insertOne({
+							userId: ws.session?.userId ?? "unknown",
+							workflowId,
+							content: text,
+							createdAt: now,
+							status: "pending" as const,
+							metadata: incomingMetadata ?? null,
+						});
+
+						await events.insertOne({
+							userId: ws.session?.userId ?? "unknown",
+							workflowId,
+							role: "user" as const,
+							content: text,
+							createdAt: now,
+							metadata: {
+								outboxId: insertResult.insertedId?.toString(),
+								status: "queued",
+								source: "socket",
+								workflowId,
+								payload: incomingMetadata,
+							},
+						});
+					}
 				} catch (error) {
 					console.error("Responder websocket message error:", error);
 					sendError(ws, "Failed to process message", "MESSAGE_ERROR");

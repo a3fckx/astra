@@ -126,6 +126,26 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 - Never ship real secrets. Use `.env.example` for placeholders only.
 - MongoDB access stays inside the Next.js app; agents read/write through Julep APIs.
 
+### Anchor Comments & Function Docs
+
+- We embed `ANCHOR:` comments beside business-critical logic so every agent understands *why* a choice exists. Treat them as living breadcrumbs—update or remove them if the rationale changes.
+- Current anchors to know:
+  - `app/src/app/api/responder/messages/route.ts` — `workflow-routing` explains why each prompt is tagged with the ChatKit `workflowId`.
+  - `app/src/pages/api/responder/socket.ts` — `change-stream-delta` & `workflow-hot-swap` document the websocket contract that mirrors OpenAI ChatKit.
+  - `app/scripts/responder-worker.ts` — `outbox-reservation`, `event-status-mirror`, and `responder-turn` cover the durable queue semantics.
+  - `app/src/components/responder-console.tsx` — `chatkit-shell`, `workflow-filter`, and `socket-send` describe how the dashboard artifact stays pixel-identical to ChatKit.
+- When you add or modify workflow-specific behavior, write a short function-level docstring explaining its role in the responder flow and include an `ANCHOR:` comment if the logic is business-specific.
+
+### Testing Expectations
+
+- Run `bun run lint` before handing work back; this is our fast guard against TypeScript or formatting regressions.
+- For responder changes, perform a manual smoke test:
+  1. Load the dashboard, ensure the ChatKit-style panel renders.
+  2. Send a prompt and confirm the outbox row appears in Mongo (`responder_outbox`) with the proper `workflowId`.
+  3. Verify the websocket streams the assistant response into the UI.
+- Worker changes require a local dry-run (`bun run worker:responder`) with seeded data; watch logs for status transitions (`queued → processing → delivered`).
+- If you introduce new anchor comments or business rules, note which test validates them directly (manual, unit, or integration).
+
 ---
 
 ## Quick Links
