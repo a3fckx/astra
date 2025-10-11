@@ -21,6 +21,47 @@ export function ResponderConsole({ userId }: ResponderConsoleProps) {
 	const wsRef = useRef<WebSocket | null>(null);
 	const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	const generateMessageId = useCallback(() => {
+		if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+			return crypto.randomUUID();
+		}
+		return `msg-${Date.now()}-${Math.random()}`;
+	}, []);
+
+	const appendMessage = useCallback((message: ResponderMessage) => {
+		setMessages((prev) => [...prev, message]);
+	}, []);
+
+	useEffect(() => {
+		const loadRecentMessages = async () => {
+			try {
+				const response = await fetch("/api/responder/messages");
+				if (!response.ok) {
+					throw new Error("Failed to load recent messages");
+				}
+				const data = await response.json();
+				if (Array.isArray(data?.messages)) {
+					setMessages(
+						data.messages.map((message) => ({
+							id: message.id ?? generateMessageId(),
+							role: message.role,
+							content: message.content,
+							createdAt:
+								typeof message.createdAt === "string"
+									? message.createdAt
+									: new Date(message.createdAt).toISOString(),
+							metadata: message.metadata ?? null,
+						})) satisfies ResponderMessage[],
+					);
+				}
+			} catch (error) {
+				console.error("Failed to load responder history", error);
+			}
+		};
+
+		void loadRecentMessages();
+	}, [generateMessageId]);
+
 	useEffect(() => {
 		const connect = () => {
 			const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -36,23 +77,62 @@ export function ResponderConsole({ userId }: ResponderConsoleProps) {
 
 			ws.addEventListener("message", (event) => {
 				try {
-					const payload = JSON.parse(event.data) as
-						| { type: "messages:init"; data: ResponderMessage[] }
-						| { type: "messages:append"; data: ResponderMessage }
-						| { type: "error"; error: string };
+					const payload = JSON.parse(event.data);
 
-					if (payload.type === "messages:init") {
-						setMessages(payload.data);
-					} else if (payload.type === "messages:append") {
-						setMessages((prev) => {
-							const exists = prev.some((msg) => msg.id === payload.data.id);
-							if (exists) {
-								return prev;
+					switch (payload?.type) {
+						case "messages:init": {
+							if (Array.isArray(payload.data)) {
+								setMessages(payload.data);
 							}
-							return [...prev, payload.data];
-						});
-					} else if (payload.type === "error") {
-						console.error(payload.error);
+							break;
+						}
+						case "messages:append": {
+							if (payload.data?.id) {
+								setMessages((prev) => {
+									const exists = prev.some((msg) => msg.id === payload.data.id);
+									if (exists) {
+										return prev;
+									}
+									return [...prev, payload.data];
+								});
+							}
+							break;
+						}
+						case "message:user":
+						case "message:assistant": {
+							const role =
+								payload.type === "message:user" ? "user" : "assistant";
+							const content = payload.data?.content;
+							if (typeof content === "string" && content.trim()) {
+								appendMessage({
+									id: payload.data?.id ?? generateMessageId(),
+									role,
+									content,
+									createdAt:
+										typeof payload.data?.timestamp === "string"
+											? payload.data.timestamp
+											: new Date().toISOString(),
+									metadata:
+										payload.data?.metadata &&
+										typeof payload.data.metadata === "object"
+											? (payload.data.metadata as Record<string, unknown>)
+											: null,
+								});
+							}
+							break;
+						}
+						case "audio:chunk":
+						case "audio:end":
+							// Audio streaming support will be handled by a dedicated player soon.
+							break;
+						case "connected":
+							console.debug("Responder socket ready", payload.data);
+							break;
+						case "error":
+							console.error("Responder socket server error", payload.error);
+							break;
+						default:
+							console.warn("Unknown responder socket payload", payload);
 					}
 				} catch (error) {
 					console.error("Failed to parse socket payload", error);
@@ -81,26 +161,37 @@ export function ResponderConsole({ userId }: ResponderConsoleProps) {
 			}
 			wsRef.current?.close();
 		};
-	}, [userId]);
+	}, [appendMessage, generateMessageId, userId]);
 
 	const sendMessage = useCallback(async () => {
 		if (!input.trim()) {
 			return;
 		}
+		const message = input.trim();
+
 		try {
 			setPending(true);
-			const response = await fetch("/api/responder/messages", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ content: input.trim() }),
-			});
-			if (!response.ok) {
-				const data = await response
-					.json()
-					.catch(() => ({ error: "Unable to send message" }));
-				throw new Error(data.error ?? "Unable to send message");
+			if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+				wsRef.current.send(
+					JSON.stringify({
+						type: "chat",
+						text: message,
+					}),
+				);
+			} else {
+				const response = await fetch("/api/responder/messages", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ content: message }),
+				});
+				if (!response.ok) {
+					const data = await response
+						.json()
+						.catch(() => ({ error: "Unable to send message" }));
+					throw new Error(data.error ?? "Unable to send message");
+				}
 			}
 			setInput("");
 		} catch (error) {

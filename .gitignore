@@ -46,3 +46,6 @@ Claude.md
 .sessions/SESSION.md
 .sessions/SESSION_*.md
 .sessions/*.backup.md
+
+# Julep agent IDs lock file (contains dynamic IDs)
+julep-lock.json

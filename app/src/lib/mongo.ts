@@ -17,6 +17,31 @@ void client.connect().catch((error) => {
 
 const db = client.db(env.mongodbDb);
 
+export type AstraUser = {
+	_id?: string;
+	id: string;
+	name: string;
+	email: string;
+	image?: string;
+	emailVerified: boolean;
+	createdAt: Date;
+	updatedAt: Date;
+	julep_user_id?: string;
+	julep_project: "astra";
+	date_of_birth?: Date;
+	birth_time?: string;
+	birth_location?: string;
+};
+
+export type AstraSession = {
+	_id?: string;
+	user_id: string;
+	julep_session_id: string;
+	agent_id: string;
+	createdAt: Date;
+	updatedAt: Date;
+};
+
 export type ResponderEvent = {
 	_id?: string;
 	userId: string;
@@ -34,6 +59,12 @@ export type ResponderOutboxMessage = {
 	status: "pending" | "processing" | "delivered" | "failed";
 	metadata?: Record<string, unknown> | null;
 };
+
+export const getUsers = (): Collection<AstraUser> =>
+	db.collection<AstraUser>("user");
+
+export const getSessions = (): Collection<AstraSession> =>
+	db.collection<AstraSession>("astra_sessions");
 
 export const getResponderEvents = (): Collection<ResponderEvent> =>
 	db.collection<ResponderEvent>("responder_events");

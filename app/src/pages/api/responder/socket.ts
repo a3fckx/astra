@@ -1,11 +1,13 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import { parse } from "node:url";
-import type { ChangeStream } from "mongodb";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { type WebSocket, WebSocketServer } from "ws";
 import { auth } from "@/lib/auth";
-import { getResponderEvents } from "@/lib/mongo";
+import { textToSpeechStream } from "@/lib/elevenlabs";
+import { julepClient } from "@/lib/julep";
+import { writeConversationSummary } from "@/lib/julep-docs";
+import { getOrCreateJulepSession, getUserByEmail } from "@/lib/websocket-utils";
 
 export const config = {
 	api: {
@@ -14,7 +16,7 @@ export const config = {
 };
 
 type ResolverServer = HttpServer & {
-	resolverWss?: WebSocketServer;
+	responderWss?: WebSocketServer;
 };
 
 type SocketResponse = NextApiResponse & {
@@ -23,119 +25,136 @@ type SocketResponse = NextApiResponse & {
 	};
 };
 
-type AuthenticatedRequest = IncomingMessage & {
-	sessionUserId?: string;
+type ResponderSocket = WebSocket & {
+	session?: {
+		userId: string;
+		email: string;
+		julepUserId?: string;
+		julepSessionId?: string;
+	};
 };
 
-const attachChangeStream = async ({
-	userId,
-	ws,
-}: {
-	userId: string;
-	ws: WebSocket;
-}) => {
-	const events = getResponderEvents();
-	try {
-		const existing = await events
-			.find({ userId })
-			.sort({ createdAt: -1 })
-			.limit(25)
-			.toArray();
+const sendJSON = (ws: ResponderSocket, payload: unknown) => {
+	if (ws.readyState === WebSocket.OPEN) {
+		ws.send(JSON.stringify(payload));
+	}
+};
 
-		ws.send(
-			JSON.stringify({
-				type: "messages:init",
-				data: existing.reverse().map((event) => ({
-					id: event._id?.toString() ?? `event-${event.createdAt.getTime()}`,
-					role: event.role,
-					content: event.content,
-					createdAt: event.createdAt.toISOString(),
-					metadata: event.metadata ?? null,
-				})),
-			}),
-		);
-	} catch (error) {
-		console.error("Failed to seed responder events", error);
-		ws.send(
-			JSON.stringify({
-				type: "error",
-				error: "Unable to load previous events",
-			}),
-		);
+const sendError = (ws: ResponderSocket, message: string, code?: string) => {
+	sendJSON(ws, {
+		type: "error",
+		error: {
+			message,
+			code,
+		},
+	});
+};
+
+async function initializeResponderSession(ws: ResponderSocket) {
+	if (!ws.session) {
+		throw new Error("Missing session context");
 	}
 
-	let closed = false;
-	let changeStream: ChangeStream | undefined;
-	try {
-		changeStream = events.watch(
-			[
-				{
-					$match: {
-						"fullDocument.userId": userId,
-						operationType: { $in: ["insert", "update", "replace"] },
-					},
-				},
-			],
-			{ fullDocument: "updateLookup" },
-		);
-	} catch (error) {
-		console.error("Change streams are not available", error);
-		ws.send(
-			JSON.stringify({
-				type: "error",
-				error:
-					"Change streams are unavailable on this MongoDB deployment. Realtime updates disabled.",
-			}),
-		);
-		return;
+	const mongoUser = await getUserByEmail(ws.session.email);
+
+	if (!mongoUser?.julep_user_id) {
+		throw Object.assign(new Error("User not synced with Julep"), {
+			code: "NO_JULEP_USER",
+		});
 	}
 
-	changeStream.on("change", (change) => {
-		if (closed) {
-			return;
-		}
-		if (!("fullDocument" in change) || !change.fullDocument) {
-			return;
-		}
-		const fullDocument = change.fullDocument;
-		ws.send(
-			JSON.stringify({
-				type: "messages:append",
-				data: {
-					id: fullDocument._id?.toString() ?? `event-${Date.now()}`,
-					role: fullDocument.role,
-					content: fullDocument.content,
-					createdAt: (fullDocument.createdAt instanceof Date
-						? fullDocument.createdAt
-						: new Date(fullDocument.createdAt)
-					).toISOString(),
-					metadata: fullDocument.metadata ?? null,
-				},
-			}),
-		);
+	ws.session.julepUserId = mongoUser.julep_user_id;
+
+	const sessionId = await getOrCreateJulepSession(mongoUser.julep_user_id);
+	ws.session.julepSessionId = sessionId;
+
+	sendJSON(ws, {
+		type: "connected",
+		data: {
+			userId: ws.session.userId,
+			sessionId,
+		},
+	});
+}
+
+async function handleChatMessage(ws: ResponderSocket, text: string) {
+	if (!ws.session?.julepSessionId || !ws.session?.julepUserId) {
+		throw Object.assign(new Error("Session not initialized"), {
+			code: "NO_SESSION",
+		});
+	}
+
+	sendJSON(ws, {
+		type: "message:user",
+		data: {
+			id: `user-${Date.now()}`,
+			role: "user",
+			content: text,
+			timestamp: new Date().toISOString(),
+		},
 	});
 
-	changeStream.on("error", (error) => {
-		console.error("Responder change stream error", error);
-		if (!closed) {
-			ws.send(
-				JSON.stringify({
-					type: "error",
-					error: "Responder stream disconnected. Please retry shortly.",
-				}),
-			);
-		}
+	const chatResponse = await getResponderReply(ws.session.julepSessionId, text);
+
+	sendJSON(ws, {
+		type: "message:assistant",
+		data: {
+			id: `assistant-${Date.now()}`,
+			role: "assistant",
+			content: chatResponse,
+			timestamp: new Date().toISOString(),
+		},
 	});
 
-	ws.on("close", () => {
-		closed = true;
-		if (changeStream) {
-			changeStream.close().catch((streamError) => {
-				console.error("Failed to close responder change stream", streamError);
+	try {
+		const audioStream = await textToSpeechStream(chatResponse);
+		for await (const chunk of audioStream) {
+			sendJSON(ws, {
+				type: "audio:chunk",
+				data: Buffer.from(chunk).toString("base64"),
 			});
 		}
+		sendJSON(ws, { type: "audio:end" });
+	} catch (audioError) {
+		console.error("TTS error (non-blocking):", audioError);
+		sendJSON(ws, {
+			type: "audio:error",
+			error: "Failed to generate audio",
+		});
+	}
+
+	writeConversationSummary(
+		ws.session.julepUserId,
+		`User: ${text}\nAssistant: ${chatResponse}`,
+		ws.session.julepSessionId,
+	).catch((error) => {
+		console.error("Failed to write summary:", error);
 	});
-};
+}
+
+async function getResponderReply(sessionId: string, text: string) {
+	const response = await getResponderSessionResponse(sessionId, text);
+	const assistantMessage = response?.response?.[0]?.content?.[0]?.text ?? "";
+
+	if (!assistantMessage) {
+		throw new Error("No response from agent");
+	}
+
+	return assistantMessage;
+}
+
+async function getResponderSessionResponse(sessionId: string, text: string) {
+	return julepClient.sessions.chat({
+		sessionId,
+		messages: [
+			{
+				role: "user",
+				content: text,
+			},
+		],
+		stream: false,
+	});
+}
 
 export default async function handler(
 	req: NextApiRequest,
@@ -154,7 +173,7 @@ export default async function handler(
 		return;
 	}
 
-	if (!server.resolverWss) {
+	if (!server.responderWss) {
 		const wss = new WebSocketServer({ noServer: true });
 
 		server.on(
@@ -170,30 +189,31 @@ export default async function handler(
 				}
 
 				try {
-					const headerMap = new Headers();
+					const headers = new Headers();
 					for (const [name, value] of Object.entries(upgradeRequest.headers)) {
 						if (!value) continue;
 						if (Array.isArray(value)) {
-							headerMap.set(name, value.join(","));
+							headers.set(name, value.join(","));
 						} else {
-							headerMap.set(name, value);
+							headers.set(name, value);
 						}
 					}
 
-					const session = await auth.api.getSession({
-						headers: headerMap,
-					});
+					const session = await auth.api.getSession({ headers });
 
-					if (!session) {
+					if (!session?.user) {
 						upgradeSocket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
 						upgradeSocket.destroy();
 						return;
 					}
 
 					wss.handleUpgrade(upgradeRequest, upgradeSocket, head, (ws) => {
-						const trackedRequest = upgradeRequest as AuthenticatedRequest;
-						trackedRequest.sessionUserId = session.user.id;
-						wss.emit("connection", ws, trackedRequest);
+						const responderSocket = ws as ResponderSocket;
+						responderSocket.session = {
+							userId: session.user.id,
+							email: session.user.email ?? "",
+						};
+						wss.emit("connection", responderSocket, upgradeRequest);
 					});
 				} catch (error) {
 					console.error("Failed to authorize websocket", error);
@@ -203,37 +223,45 @@ export default async function handler(
 			},
 		);
 
-		wss.on("connection", (ws, connectionRequest: AuthenticatedRequest) => {
-			const userId = connectionRequest.sessionUserId;
-			if (!userId) {
-				ws.close(1008, "Unauthorized");
+		wss.on("connection", async (socket) => {
+			const ws = socket as ResponderSocket;
+			const email = ws.session?.email ?? "unknown";
+
+			console.log(`Responder websocket connected: ${email}`);
+
+			try {
+				await initializeResponderSession(ws);
+			} catch (error) {
+				const err = error as Error & { code?: string };
+				console.error("Responder session init error:", err);
+				sendError(ws, err.message, err.code);
+				ws.close(1011, err.message);
 				return;
 			}
 
-			attachChangeStream({ userId, ws }).catch((error) => {
-				console.error("Failed to attach responder stream", error);
-				ws.send(
-					JSON.stringify({
-						type: "error",
-						error: "Unable to attach change stream",
-					}),
-				);
-			});
-
-			ws.on("message", (raw) => {
+			ws.on("message", async (raw) => {
 				try {
 					const decoded = JSON.parse(raw.toString());
 					if (decoded?.type === "heartbeat") {
-						ws.send(JSON.stringify({ type: "heartbeat", ts: Date.now() }));
+						sendJSON(ws, { type: "heartbeat", ts: Date.now() });
+						return;
+					}
+					if (decoded?.type === "chat" && typeof decoded.text === "string") {
+						await handleChatMessage(ws, decoded.text);
 					}
 				} catch (error) {
-					console.error("Responder socket message error", error);
+					console.error("Responder websocket message error:", error);
+					sendError(ws, "Failed to process message", "MESSAGE_ERROR");
 				}
+			});
+
+			ws.on("close", () => {
+				console.log(`Responder websocket disconnected: ${email}`);
 			});
 		});
 
-		server.resolverWss = wss;
-		console.info("Responder websocket server initialized");
+		server.responderWss = wss;
+		console.info("Responder websocket server initialized (Node runtime)");
 	}
 
 	res.status(200).json({ ok: true });
