@@ -1,0 +1,345 @@
+.container {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 90vh;
+	width: 100%;
+	max-width: 860px;
+	margin: 0 auto;
+	background: #ffffff;
+	border-radius: 28px;
+	box-shadow: 0 28px 80px rgba(15, 23, 42, 0.14);
+	border: 1px solid rgba(15, 23, 42, 0.08);
+	overflow: hidden;
+}
+
+.containerDark {
+	background: #0f172a;
+	border-color: rgba(148, 163, 184, 0.18);
+	box-shadow: 0 36px 90px rgba(2, 6, 23, 0.45);
+}
+
+.header {
+	padding: 22px 30px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1.5rem;
+	background: rgba(241, 245, 249, 0.72);
+	border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.headerDark {
+	background: rgba(15, 23, 42, 0.85);
+	border-bottom-color: rgba(148, 163, 184, 0.24);
+}
+
+.titleBlock {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.title {
+	font-size: 1.35rem;
+	font-weight: 600;
+	color: #0f172a;
+	margin: 0;
+}
+
+.titleDark {
+	color: #e2e8f0;
+}
+
+.subtitle {
+	font-size: 0.95rem;
+	color: rgba(15, 23, 42, 0.7);
+	margin: 0;
+}
+
+.subtitleDark {
+	color: rgba(226, 232, 240, 0.74);
+}
+
+.headerActions {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.workflowTag {
+	font-size: 0.8rem;
+	font-weight: 600;
+	padding: 0.45rem 0.85rem;
+	border-radius: 999px;
+	background: rgba(15, 23, 42, 0.08);
+	color: #111827;
+}
+
+.workflowTagDark {
+	background: rgba(148, 163, 184, 0.18);
+	color: rgba(226, 232, 240, 0.85);
+}
+
+.themeButton {
+	border-radius: 999px;
+	border: 1px solid rgba(15, 23, 42, 0.12);
+	background: rgba(255, 255, 255, 0.9);
+	padding: 0.45rem 0.75rem;
+	font-size: 0.85rem;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	color: rgba(15, 23, 42, 0.75);
+}
+
+.themeButtonDark {
+	background: rgba(15, 23, 42, 0.75);
+	border-color: rgba(148, 163, 184, 0.24);
+	color: rgba(226, 232, 240, 0.85);
+}
+
+.messagePane {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	padding: 24px 32px;
+	gap: 18px;
+	background: linear-gradient(
+		180deg,
+		rgba(241, 245, 249, 0.7),
+		rgba(255, 255, 255, 0.95)
+	);
+	overflow-y: auto;
+}
+
+.messagePaneDark {
+	background: linear-gradient(
+		180deg,
+		rgba(15, 23, 42, 0.85),
+		rgba(15, 23, 42, 0.95)
+	);
+}
+
+.startScreen {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1.25rem;
+	padding: 1.25rem 1.5rem;
+	border-radius: 22px;
+	background: rgba(255, 255, 255, 0.92);
+	border: 1px solid rgba(15, 23, 42, 0.06);
+	box-shadow: 0 20px 44px rgba(15, 23, 42, 0.08);
+}
+
+.startScreenDark {
+	background: rgba(15, 23, 42, 0.78);
+	border-color: rgba(148, 163, 184, 0.2);
+	box-shadow: 0 24px 60px rgba(2, 6, 23, 0.45);
+}
+
+.greeting {
+	margin: 0;
+	font-size: 1.45rem;
+	font-weight: 600;
+	color: #0f172a;
+}
+
+.greetingDark {
+	color: #f8fafc;
+}
+
+.promptList {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+
+.promptButton {
+	border-radius: 999px;
+	border: 1px solid rgba(59, 130, 246, 0.4);
+	background: rgba(59, 130, 246, 0.1);
+	color: #1d4ed8;
+	padding: 0.55rem 1rem;
+	font-size: 0.9rem;
+	cursor: pointer;
+	transition:
+		transform 0.12s ease,
+		box-shadow 0.12s ease;
+}
+
+.promptButton:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 12px 24px rgba(59, 130, 246, 0.22);
+}
+
+.promptButtonDark {
+	background: rgba(37, 99, 235, 0.18);
+	color: rgba(191, 219, 254, 0.95);
+	border-color: rgba(37, 99, 235, 0.4);
+}
+
+.message {
+	max-width: 68%;
+	padding: 16px 20px;
+	border-radius: 20px;
+	line-height: 1.65;
+	font-size: 0.98rem;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.assistant {
+	align-self: flex-start;
+	background: rgba(15, 23, 42, 0.06);
+	border: 1px solid rgba(15, 23, 42, 0.08);
+	color: #0f172a;
+}
+
+.assistantDark {
+	background: rgba(30, 41, 59, 0.78);
+	border-color: rgba(148, 163, 184, 0.18);
+	color: #e2e8f0;
+}
+
+.user {
+	align-self: flex-end;
+	background: linear-gradient(135deg, #6366f1, #8b5cf6);
+	color: #f8fafc;
+	box-shadow: 0 20px 48px rgba(99, 102, 241, 0.28);
+	border: none;
+}
+
+.system {
+	align-self: center;
+	max-width: 80%;
+	background: rgba(148, 163, 184, 0.18);
+	color: rgba(30, 41, 59, 0.85);
+	border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.systemDark {
+	background: rgba(71, 85, 105, 0.35);
+	color: rgba(226, 232, 240, 0.85);
+	border-color: rgba(148, 163, 184, 0.55);
+}
+
+.timestamp {
+	font-size: 0.75rem;
+	opacity: 0.7;
+}
+
+.statusBadge {
+	align-self: flex-start;
+	border-radius: 999px;
+	font-size: 0.7rem;
+	padding: 2px 8px;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	border: 1px solid transparent;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.statusQueued {
+	background: rgba(59, 130, 246, 0.15);
+	color: #1d4ed8;
+	border-color: rgba(59, 130, 246, 0.25);
+}
+
+.statusProcessing {
+	background: rgba(234, 179, 8, 0.14);
+	color: #b45309;
+	border-color: rgba(234, 179, 8, 0.26);
+}
+
+.statusDelivered {
+	background: rgba(16, 185, 129, 0.15);
+	color: #047857;
+	border-color: rgba(16, 185, 129, 0.24);
+}
+
+.statusFailed {
+	background: rgba(248, 113, 113, 0.16);
+	color: #b91c1c;
+	border-color: rgba(248, 113, 113, 0.28);
+}
+
+.composer {
+	padding: 22px 28px;
+	border-top: 1px solid rgba(15, 23, 42, 0.08);
+	display: flex;
+	gap: 16px;
+	background: rgba(255, 255, 255, 0.94);
+}
+
+.composerDark {
+	background: rgba(15, 23, 42, 0.85);
+	border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+.textarea {
+	flex: 1;
+	min-height: 64px;
+	max-height: 128px;
+	resize: vertical;
+	border-radius: 20px;
+	border: 1px solid rgba(148, 163, 184, 0.36);
+	padding: 15px 20px;
+	font-size: 1rem;
+	font-family: inherit;
+	color: #0f172a;
+	background: rgba(248, 250, 252, 0.95);
+	box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
+}
+
+.textarea:focus {
+	outline: none;
+	border-color: rgba(59, 130, 246, 0.5);
+	box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+}
+
+.textareaDark {
+	background: rgba(30, 41, 59, 0.78);
+	border-color: rgba(148, 163, 184, 0.28);
+	color: rgba(226, 232, 240, 0.92);
+}
+
+.sendButton {
+	align-self: flex-end;
+	padding: 15px 26px;
+	border-radius: 18px;
+	border: none;
+	font-weight: 600;
+	font-size: 0.95rem;
+	background: linear-gradient(135deg, #6366f1 0%, #0ea5e9 100%);
+	color: #f8fafc;
+	cursor: pointer;
+	box-shadow: 0 18px 40px rgba(14, 165, 233, 0.32);
+	transition:
+		transform 0.12s ease,
+		box-shadow 0.12s ease,
+		filter 0.12s ease;
+}
+
+.sendButton:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 22px 48px rgba(14, 165, 233, 0.38);
+	filter: brightness(1.03);
+}
+
+.sendButton:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+	transform: none;
+	box-shadow: none;
+}
+
+.scrollAnchor {
+	height: 1px;
+}

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ResponderConsole } from "@/components/responder-console";
 import { auth } from "@/lib/auth";
+import { WORKFLOW_ID } from "@/lib/chatkit-config";
 
 export const metadata: Metadata = {
 	title: "Astra Dashboard",
@@ -40,7 +41,11 @@ export default async function DashboardPage() {
 					specialists stay private in the monolith.
 				</p>
 			</header>
-			<ResponderConsole userId={session.user.id} />
+			<ResponderConsole
+				userId={session.user.id}
+				workflowId={WORKFLOW_ID}
+				initialTheme="light"
+			/>
 		</main>
 	);
 }

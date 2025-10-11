@@ -6,7 +6,10 @@
       "dependencies": {
         "@elevenlabs/elevenlabs-js": "^2.18.0",
         "@julep/sdk": "^2.7.4",
+        "@openai/chatkit": "^1.0.0",
+        "@openai/chatkit-react": "^1.1.1",
         "better-auth": "^1.3.27",
+        "clsx": "^2.1.1",
         "mongodb": "^6.8.0",
         "next": "15.5.0",
         "react": "^18",
@@ -161,6 +164,10 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@nolyfill/is-core-module": ["@nolyfill/is-core-module@1.0.39", "", {}, "sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA=="],
+
+    "@openai/chatkit": ["@openai/chatkit@1.0.0", "", {}, "sha512-BlRu1UMz29z01bn0D2nA5lgSeo0Eu/5uNdGUMKchoFEDHWQ8ViCHDRFO45O6FT/cdqhXbYZOzIrjUryq6djk4w=="],
+
+    "@openai/chatkit-react": ["@openai/chatkit-react@1.1.1", "", { "dependencies": { "@openai/chatkit": "1.0.0" }, "peerDependencies": { "react": ">=18", "react-dom": ">=18" } }, "sha512-sbYZBqLkx5nEIRmBFXJ8OCsRB+0II1eu/9QSVJP4T73PdAsggTMPfxw8FUGioFFJcYrNVoFvYaBFHZVUC71jtw=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.5.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.5.0", "asn1js": "^3.0.6", "tslib": "^2.8.1" } }, "sha512-t8A83hgghWQkcneRsgGs2ebAlRe54ns88p7ouv8PW2tzF1nAW4yHcL4uZKrFpIU+uszIRzTkcCuie37gpkId0A=="],
 
@@ -351,6 +358,8 @@
     "chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
     "client-only": ["client-only@0.0.1", "", {}, "sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA=="],
+
+    "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
     "color-convert": ["color-convert@2.0.1", "", { "dependencies": { "color-name": "~1.1.4" } }, "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ=="],
 

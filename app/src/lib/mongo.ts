@@ -1,4 +1,9 @@
-import { type Collection, type Document, MongoClient } from "mongodb";
+import {
+	type Collection,
+	type Document,
+	MongoClient,
+	type ObjectId,
+} from "mongodb";
 import { env } from "@/lib/env";
 
 declare global {
@@ -18,7 +23,7 @@ void client.connect().catch((error) => {
 const db = client.db(env.mongodbDb);
 
 export type AstraUser = {
-	_id?: string;
+	_id?: ObjectId;
 	id: string;
 	name: string;
 	email: string;
@@ -28,6 +33,8 @@ export type AstraUser = {
 	updatedAt: Date;
 	julep_user_id?: string;
 	julep_project: "astra";
+	birth_day?: number;
+	birth_month?: number;
 	date_of_birth?: Date;
 	birth_time?: string;
 	birth_location?: string;
@@ -43,8 +50,9 @@ export type AstraSession = {
 };
 
 export type ResponderEvent = {
-	_id?: string;
+	_id?: ObjectId;
 	userId: string;
+	workflowId?: string;
 	role: "assistant" | "system" | "user";
 	content: string;
 	createdAt: Date;
@@ -52,12 +60,18 @@ export type ResponderEvent = {
 };
 
 export type ResponderOutboxMessage = {
-	_id?: string;
+	_id?: ObjectId;
 	userId: string;
+	workflowId?: string;
 	content: string;
 	createdAt: Date;
 	status: "pending" | "processing" | "delivered" | "failed";
 	metadata?: Record<string, unknown> | null;
+	processingStartedAt?: Date;
+	updatedAt?: Date;
+	workerId?: string;
+	failedAt?: Date;
+	error?: string;
 };
 
 export const getUsers = (): Collection<AstraUser> =>

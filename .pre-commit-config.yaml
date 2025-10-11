@@ -7,12 +7,12 @@ repos:
         language: system
         files: ^AGENTS\.md$
         pass_filenames: false
-      # - id: run-tests
-#         name: Run Tests with Bun
-#         entry: bash -c 'cd app && bun test'
-#         language: system
-#         files: ^(app/src/|app/tests/).*\.(ts|tsx)$
-#         pass_filenames: false
+      - id: run-tests
+        name: Run Tests with Bun
+        entry: bash -c 'cd app && bun test --timeout=1000 tests/unit/env.test.ts'
+        language: system
+        files: ^(app/src/|app/tests/).*\.(ts|tsx)$
+        pass_filenames: false
       # - id: lint-and-type-check
 #         name: Lint and Type Check with Biome
 #         entry: bash -c 'cd app && bun run lint && bun run type-check'
