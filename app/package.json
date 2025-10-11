@@ -8,12 +8,19 @@
 		"start": "next start",
 		"lint": "biome check --fix src",
 		"type-check": "biome check",
-		"sync:agents": "bun run scripts/sync-agents.ts"
+		"sync:agents": "bun run scripts/sync-agents.ts",
+		"worker:responder": "bun run scripts/responder-worker.ts",
+		"test": "bun test",
+		"test:watch": "bun test --watch",
+		"test:coverage": "bun test --coverage"
 	},
 	"dependencies": {
 		"@elevenlabs/elevenlabs-js": "^2.18.0",
 		"@julep/sdk": "^2.7.4",
+		"@openai/chatkit": "^1.0.0",
+		"@openai/chatkit-react": "^1.1.1",
 		"better-auth": "^1.3.27",
+		"clsx": "^2.1.1",
 		"mongodb": "^6.8.0",
 		"next": "15.5.0",
 		"react": "^18",
