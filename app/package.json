@@ -10,9 +10,9 @@
 		"type-check": "biome check",
 		"sync:agents": "bun run scripts/sync-agents.ts",
 		"set:memory-token": "bun run scripts/set-memory-token.ts",
-		"test": "bun test",
-		"test:watch": "bun test --watch",
-		"test:coverage": "bun test --coverage"
+		"test": "bun --env-file=.env test",
+		"test:watch": "bun --env-file=.env test --watch",
+		"test:coverage": "bun --env-file=.env test --coverage"
 	},
 	"dependencies": {
 		"@elevenlabs/elevenlabs-js": "^2.18.0",
