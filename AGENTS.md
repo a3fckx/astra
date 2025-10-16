@@ -56,6 +56,7 @@ astra/
    - Profiles seeded at signup (name, email, birth data from Google People API)
    - Conversation summaries written by agent via Memory Store MCP
    - Metadata filters control recall (`scope=frontline|background`)
+   - When we have a manual Memory Store token for a user, seed it via `cd app && bun run set:memory-token --email <user-email> --token <token>` so the voice session can auto-approve MCP calls until automatic provisioning is in place.
 
 ---
 
