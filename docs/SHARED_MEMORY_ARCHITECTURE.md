@@ -1,509 +1,143 @@
 # Shared Memory Architecture
 
-## Overview
+## Why This Exists
+- Keep the voice-first experience grounded in persistent user context.
+- Let background agents enrich what Astra knows without blocking the real-time flow.
+- Feed ElevenLabs dynamic variables with the freshest snapshot of user insights.
 
-Astra uses a **shared document-based memory system** where both the Responder Agent (Astra) and Background Worker Agent interact with the same user documents via Julep's RAG capabilities.
-
----
-
-## Architecture Diagram
+## End-to-End Flow (Current Iteration)
+1. **Auth + Session Handshake**  
+   `/api/responder/session` resolves the Better Auth session, retrieves Mongo-backed user metadata, and opens/returns a Julep session (`ANCHOR:dynamic-session-variables`).
+2. **Conversation Session**  
+   `VoiceSession` starts an ElevenLabs workflow, injects dynamic variables, and logs each conversation start to Mongo (`ANCHOR:conversation-ledger`).
+3. **Telemetry Fan-out**  
+   Conversation IDs accumulate on the user document (`elevenlabs_conversations[]`) for downstream processing (`ANCHOR:conversation-history-array`).
+4. **Background Summarizer (Julep Agent)**  
+   A durable Julep task consumes new conversation IDs, fetches transcripts, produces user-level insights, and writes them back to Mongo + Julep docs.
+5. **Next Live Turn**  
+   On the next login, the refreshed summaries are surfaced to ElevenLabs via dynamic variables so Jadugar can reference them immediately.
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                       User Login                            │
-│        (Better Auth → MongoDB → Julep User Sync)           │
-└──────────────────────┬─────────────────────────────────────┘
-                       ↓
-┌────────────────────────────────────────────────────────────┐
-│                 User Birth Data Captured                    │
-│      - Date of Birth (YYYY-MM-DD)                          │
-│      - Birth Time (HH:mm, 24h, timezone)                   │
-│      - Birth Location (city, country)                      │
-└──────────────────────┬─────────────────────────────────────┘
-                       ↓
-         ┌─────────────────────────────┐
-         │    Background Worker        │
-         │  Generates Vedic Charts     │
-         │  - Calculates planets       │
-         │  - Houses, Dashas           │
-         │  - Transits, Aspects        │
-         └──────────┬──────────────────┘
-                    ↓
-         ┌─────────────────────────────┐
-         │   SHARED MEMORY LAYER       │
-         │   (Julep User Documents)    │
-         │                             │
-         │  ┌──────────────────────┐  │
-         │  │  Profile Document    │  │
-         │  │  - Birth data        │  │
-         │  │  - Vedic chart data  │  │
-         │  └──────────────────────┘  │
-         │                             │
-         │  ┌──────────────────────┐  │
-         │  │ Preferences Document │  │
-         │  │ - Communication style│  │
-         │  │ - Interests          │  │
-         │  └──────────────────────┘  │
-         │                             │
-         │  ┌──────────────────────┐  │
-         │  │ Horoscope Documents  │  │
-         │  │ - Daily readings     │  │
-         │  │ - Transit predictions│  │
-         │  └──────────────────────┘  │
-         │                             │
-         │  ┌──────────────────────┐  │
-         │  │  Notes Documents     │  │
-         │  │  - Conversation logs │  │
-         │  │  - Insights          │  │
-         │  └──────────────────────┘  │
-         └──────┬──────────┬───────────┘
-                ↓          ↓
-    ┌───────────────┐  ┌──────────────────┐
-    │  Astra Agent  │  │ Background Worker│
-    │  (Responder)  │  │     Agent        │
-    │               │  │                  │
-    │  - Real-time  │  │ - Scheduled      │
-    │    chat       │  │   tasks          │
-    │  - Recall=true│  │ - Data analysis  │
-    │  - Uses docs  │  │ - Updates docs   │
-    │    for context│  │                  │
-    └───────────────┘  └──────────────────┘
+ ┌──────────────┐      ┌────────────┐      ┌──────────────────┐
+ │  ElevenLabs  │─────▶│  Next.js   │─────▶│  MongoDB (user)  │
+ │  Voice SDK   │      │  Session   │      │  + Collections   │
+ └──────┬───────┘      └────┬───────┘      └────────┬─────────┘
+        │ conversation_id        │                       │
+        │ telemetry              │                       │
+        ▼                       ▼                       ▼
+ ┌──────────────┐      ┌────────────┐      ┌──────────────────┐
+ │ ElevenLabs   │─────▶│ Julep Task │─────▶│ Julep User Docs  │
+ │ Transcript   │      │  Summarizer│      │ (profile/notes)  │
+ └──────────────┘      └────────────┘      └──────────────────┘
 ```
 
----
+## Mongo Footprint
 
-## How It Works
+| Collection | Key Fields | Purpose |
+|------------|------------|---------|
+| `user` | `astro_overview`, `conversation_digest`, `elevenlabs_conversations[]`, birth data fields | Fast access during session handshake and dynamic variable injection. |
+| `elevenlabs_conversations` | `conversation_id`, `workflow_id`, `status`, `ended_at`, `duration_ms`, `metadata`, timestamps | Source of truth for raw ElevenLabs conversations and trigger for summarizer. |
+| `astra_sessions` | `julep_session_id`, `agent_id` | Cached mapping between users and Julep sessions. |
+| `integration_tokens` | `token`, `metadata` | Enables MCP Memory Store auto-approval in the voice UI. |
 
-### 1. User Onboarding Flow
+Conversation records flow through three lifecycle states:
+- `active` — persisted as soon as ElevenLabs hands back a `conversation_id`.
+- `completed` — recorded when the session ends cleanly (user stop or remote disconnect) and stamped with `ended_at` + `duration_ms`.
+- `abandoned` — set when the client exits unexpectedly or the SDK surfaces an error so background jobs can skip partial transcripts.
 
-```typescript
-// When user signs in with Google (Better Auth)
-// → User created in MongoDB
-// → Post-signup hook triggers Julep sync
-// → Julep user created
-// → Baseline documents seeded:
-//    - profile (empty birth data slots)
-//    - preferences (learning over time)
-```
+**`astro_overview`**  
+Single string containing the canonical “what Astra knows about the user” narrative. Includes birth data, personality cues, and high-signal preferences.
 
-### 2. Birth Data Collection
+**`conversation_digest`**  
+JSON object with at least:
+- `latest_summary` — recency weighted digest of the last full conversation.
+- `last_updated_iso` — ISO timestamp from the summarizer run.
+- `topics` — ordered array of `{ topic, sentiment, confidence }`.
 
-User provides birth information through UI:
-- **Date**: YYYY-MM-DD
-- **Time**: HH:mm (24-hour format) + IANA timezone
-- **Location**: City, Country (or lat/long)
-- **System preference**: Vedic (default) or Western
-- **Ayanamsha**: Lahiri (default for Vedic)
+These fields feed dynamic variables directly.
 
-Stored in profile document:
-
-```javascript
-{
-  title: "User Profile",
-  content: [
-    "Name: John Doe",
-    "Email: john@example.com",
-    "Date of Birth: 1990-05-15",
-    "Birth Time: 14:30 IST",
-    "Birth Location: Mumbai, India (19.0760° N, 72.8777° E)",
-    "System: Vedic",
-    "Ayanamsha: Lahiri"
-  ],
-  metadata: {
-    type: "profile",
-    scope: "frontline",
-    shared: true,
-    updated_by: "system",
-    timestamp_iso: "2025-01-15T10:30:00Z"
-  }
-}
-```
-
-### 3. Background Chart Generation
-
-Background Worker Agent task triggered:
+## Julep Summarizer Agent Blueprint
 
 ```yaml
-# Task: Generate Vedic Chart
-- tool: search_user_profile
-  arguments:
-    user_id: $ _.julep_user_id
-    metadata_filter:
-      type: "profile"
+# agents/conversation-summarizer.yaml (sketch)
+trigger:
+  type: cron|manual|webhook
+  filter:
+    new_conversation: true
 
-- evaluate:
-    birth_data: $ steps[0].output.docs[0].content
-
-# Call Vedic calculation tool (MCP or custom)
-- tool: calculate_vedic_chart
-  arguments:
-    date: $ _.birth_data.date
-    time: $ _.birth_data.time
-    location: $ _.birth_data.location
-    ayanamsha: "Lahiri"
-
-# Store results in shared memory
-- tool: create_user_doc
-  arguments:
-    user_id: $ _.julep_user_id
-    title: "Vedic Birth Chart"
-    content:
-      - $ steps[1].output.chart_data
-    metadata:
-      type: "analysis"
-      scope: "frontline"
-      shared: true
-      updated_by: $ _.current_task_id
-      chart_type: "natal"
-```
-
-Chart data includes:
-- Planetary positions (degrees in signs)
-- House cusps
-- Ascendant (Lagna)
-- Moon sign, Sun sign
-- Dashas (planetary periods)
-- Yogas (combinations)
-
-### 4. Responder Agent Uses Shared Memory
-
-When user chats with Astra:
-
-```typescript
-// Session created with recall=true
-const session = await julepClient.sessions.create({
-  userId: julepUserId,
-  agentId: astraAgentId,
-  recall: true,  // ENABLES MEMORY SEARCH
-  recallOptions: {
-    mode: "hybrid",  // BM25 + vector search
-    limit: 10,
-    numSearchMessages: 4,
-    metadataFilter: {
-      scope: "frontline",  // Only frontline docs
-      shared: true         // Only shared docs
-    }
-  }
-});
-
-// When user asks: "What's my moon sign?"
-// → Julep automatically searches user docs
-// → Finds profile + chart documents
-// → Injects as context to Astra
-// → Astra responds: "Your moon is in Pisces..."
-```
-
----
-
-## Document Types & Scopes
-
-### Profile Documents
-- **Type**: `profile`
-- **Scope**: `frontline` (accessible to Astra)
-- **Content**: Birth data, chart calculations, personal info
-- **Updated by**: User input, background tasks
-
-### Preferences Documents
-- **Type**: `preferences`
-- **Scope**: `frontline`
-- **Content**: Communication style, interests, topics discussed
-- **Updated by**: Background persona enrichment task
-
-### Horoscope Documents
-- **Type**: `horoscope`
-- **Scope**: `background` initially, `frontline` after processing
-- **Content**: Daily predictions, transit effects
-- **Updated by**: Background horoscope task
-
-### Notes Documents
-- **Type**: `notes`
-- **Scope**: `frontline`
-- **Content**: Conversation summaries, insights
-- **Updated by**: Astra after each conversation
-
-### Analysis Documents
-- **Type**: `analysis`
-- **Scope**: `frontline` or `background`
-- **Content**: Chart interpretations, pattern analysis
-- **Updated by**: Background tasks
-
----
-
-## Memory Search Mechanism
-
-### Hybrid Search (BM25 + Vector)
-
-When Astra receives a message:
-
-1. **Message History**: Last N messages in session
-2. **Keyword Search (BM25)**: Exact term matching in documents
-3. **Semantic Search (Vector)**: Meaning-based similarity
-4. **Metadata Filter**: Only `scope=frontline, shared=true`
-5. **Ranking**: Combine scores, return top K documents
-6. **Context Injection**: Docs added to system prompt
-
-Example:
-```
-User: "Tell me about my Venus placement"
-
-Search executes:
-- BM25: Matches "Venus" in chart document
-- Vector: Understands "placement" → "position", "house"
-- Returns: Chart doc with Venus at 12° Cancer in 7th house
-
-Astra receives context:
-"User's Venus: 12° Cancer, 7th House, aspects Jupiter..."
-
-Astra responds:
-"Your Venus in Cancer in the 7th house suggests..."
-```
-
----
-
-## TTS Integration Flow
-
-```typescript
-// In socket-bun.ts handler:
-
-// 1. Get text response from Astra
-const chatResponse = await julepClient.sessions.chat({
-  sessionId,
-  messages: [{ role: "user", content: userMessage }],
-  stream: false
-});
-
-const text = chatResponse.response[0].content[0].text;
-
-// 2. Send text to client immediately
-sendJSON(ws, {
-  type: "message:assistant",
-  data: { role: "assistant", content: text, timestamp: ... }
-});
-
-// 3. Stream audio chunks (non-blocking)
-try {
-  const audioStream = await textToSpeechStream(text);
-  
-  for await (const chunk of audioStream) {
-    sendJSON(ws, {
-      type: "audio:chunk",
-      data: Buffer.from(chunk).toString("base64")
-    });
-  }
-  
-  sendJSON(ws, { type: "audio:end" });
-} catch (error) {
-  // Audio fails gracefully - text still delivered
-  console.error("TTS error:", error);
-}
-```
-
-**TTS Status**: ✅ **FULLY CONFIGURED AND READY**
-- ElevenLabs client initialized
-- Streaming support via `convertAsStream`
-- Model: `eleven_turbo_v2_5` (fast, high quality)
-- Voice: Configurable via `ELEVENLABS_VOICE_ID`
-- Fallback: If TTS fails, text message still works
-
----
-
-## Background Task Workflow
-
-### Daily Horoscope Generation
-
-**Trigger**: Cron job at 6:00 AM user timezone
-
-```typescript
-// Scheduled function
-export async function generateDailyHoroscopes() {
-  const users = await getUsers().find({
-    date_of_birth: { $exists: true },
-    julep_user_id: { $exists: true }
-  }).toArray();
-  
-  for (const user of users) {
-    await julepClient.executions.create({
-      taskId: process.env.HOROSCOPE_TASK_ID,
-      input: { julep_user_id: user.julep_user_id }
-    });
-  }
-}
-```
-
-**Task flow**:
-1. Search user profile for birth data + chart
-2. Calculate current transits
-3. Generate daily prediction (LLM prompt)
-4. Write to horoscope document (scope=frontline)
-5. Next time user chats, Astra can reference today's horoscope
-
-### Persona Enrichment
-
-**Trigger**: After 5+ conversations
-
-```typescript
-// Check conversation count
-const notesCount = await julepClient.users.docs.list({
-  userId: julepUserId,
-  metadataFilter: { type: "notes" },
-  limit: 100
-}).length;
-
-if (notesCount >= 5) {
-  await julepClient.executions.create({
-    taskId: process.env.PERSONA_ENRICHMENT_TASK_ID,
-    input: { julep_user_id: julepUserId }
-  });
-}
-```
-
-**Task flow**:
-1. Retrieve all notes documents
-2. Analyze patterns (topics, tone, questions)
-3. Update preferences document
-4. Astra automatically adapts in future conversations
-
----
-
-## MCP Tools Integration
-
-### What is MCP?
-
-**Model Context Protocol** - A standardized way for agents to discover and use external tools dynamically.
-
-### How Astra Will Use MCP
-
-#### Shared Memory Store Tokens
-
-Runtime agents now pull user-scoped tokens from the `integration_tokens` MongoDB collection. The `/api/integrations/tokens` endpoint resolves the active credential (falling back to the bootstrap token you place in `MEMORY_STORE_DEFAULT_TOKEN`). This keeps the dashboard and background worker aligned on the same MCP session without hard-coding long-lived secrets in YAML. Rotate per-user tokens by upserting new records keyed on `(userId, integration)`.
-
-#### 1. Vedic Astrology Calculations (Custom MCP Server)
-
-We'll create a custom MCP server for Vedic calculations:
-
-```typescript
-// Custom MCP server (separate service)
-// Exposes tools like:
-// - calculate_planet_positions
-// - calculate_house_cusps
-// - calculate_dashas
-// - find_yogas
-// - calculate_transits
-```
-
-**In agent YAML**:
-```yaml
-tools:
-  - name: vedic_calculator
-    type: integration
-    integration:
-      provider: mcp
-      method: list_tools
-      setup:
-        transport: http
-        http_url: https://vedic-mcp.astra.app/mcp
-        http_headers:
-          Authorization: "Bearer {VEDIC_MCP_API_KEY}"
-```
-
-#### 2. External Knowledge (DeepWiki MCP)
-
-```yaml
-tools:
-  - name: astro_wiki
-    type: integration
-    integration:
-      provider: mcp
-      method: call_tool
-      setup:
-        transport: http
-        http_url: https://mcp.deepwiki.com/mcp
-
-# Astra can now search astrology wikis for concepts:
-# "What is Kuja Dosha?" → Searches documentation
-```
-
-#### 3. Dynamic Tool Discovery
-
-```yaml
-# In background task
-- tool: vedic_calculator
-  arguments:
-    tool_name: "calculate_planet_positions"
+steps:
+  - name: load_conversation
+    description: Fetch ElevenLabs transcript via curl helper.
+    tool: elevenlabs_transcript_fetch
     arguments:
-      date: "1990-05-15"
-      time: "14:30"
-      timezone: "Asia/Kolkata"
-      ayanamsha: "Lahiri"
+      conversation_id: ${{ input.conversation_id }}
+
+  - name: analyze
+    description: Generate overview + sentiments + to-dos.
+    prompt: agents/responder/summarizer.md
+    input:
+      user_profile: ${{ tools.search_user_profile(...) }}
+      transcript: ${{ steps.load_conversation.output }}
+
+  - name: persist_mongo
+    tool: mongo.update_user_profile
+    arguments:
+      user_id: ${{ input.user_id }}
+      astro_overview: ${{ steps.analyze.output.astro_overview }}
+      conversation_digest: ${{ steps.analyze.output.conversation_digest }}
+
+  - name: persist_julep_doc
+    tool: julep.create_user_doc
+    arguments:
+      user_id: ${{ input.user_id }}
+      title: "Conversation Summary - ${{ now_iso }}"
+      content: ${{ steps.analyze.output.full_summary }}
+      metadata:
+        type: "notes"
+        scope: "frontline"
+        updated_by: "conversation-summarizer"
+        source: ${{ input.conversation_id }}
 ```
 
-Julep automatically:
-1. Discovers available tools from MCP server
-2. Validates parameters
-3. Executes tool
-4. Returns results in normalized format
+**Transcript Fetching**  
+Use ElevenLabs Conversations API (`curl https://api.elevenlabs.io/v1/conv/...`) with the user-scoped agent token. The React SDK doc snippet works unchanged— wrap it in a Julep MCP tool so the agent can call it securely.
 
----
+**Idempotency**  
+Store `conversation_id` + `run_id` in Mongo (`conversation_digest.processed_conversations[]`) to avoid double processing if the cron overlaps.
 
-## Next Steps Architecture
+## Dynamic Variable Contract
 
-### Phase 1: Get App Running ✅
-- [x] Create agents via YAML
-- [ ] Run `bun run sync:agents`
-- [ ] Test WebSocket connection
-- [ ] Test chat with Astra
-- [ ] Verify TTS streaming
+| Variable | Source | Notes |
+|----------|--------|-------|
+| `user_name` | `handshake.session.user.name` | Fallback to email username. |
+| `workflow_id` | Query param or default `astra-responder` | Keeps ElevenLabs workflow routing consistent. |
+| `julep_session_id` | Cached in `astra_sessions` | Enables recall in real-time chat. |
+| `memory_store_token` | `integration_tokens` lookup | Controls auto-approval in `ANCHOR:mcp-memory-approval`. |
+| `elevenlabs_user_token` | `integration_tokens` lookup | Required for transcript retrieval and SDK reconnects. |
+| `date_of_birth`, `birth_time`, `birth_place` | Mongo `user` document | Optional, sent when available. |
+| `astro_overview` | Mongo `user.astro_overview` | Summarizer output; empty string when not yet computed. |
+| `latest_conversation_summary` | `user.conversation_digest.latest_summary` | High-level refresher injected before each turn. |
 
-### Phase 2: Birth Data Collection
-- [ ] Create birth data input form UI
-- [ ] Store in MongoDB user record
-- [ ] Update Julep profile document
-- [ ] Test data persistence
+`VoiceSession` already sanitizes falsy values; new fields must adhere to the same pattern (no `undefined`, trimmed strings).
 
-### Phase 3: Vedic Chart Generation
-- [ ] Research Vedic calculation libraries (Swiss Ephemeris)
-- [ ] Create custom MCP server for calculations OR
-- [ ] Use existing library with custom integration tool
-- [ ] Create background task for chart generation
-- [ ] Test chart storage in shared memory
+## Julep Document Strategy
+- **Profile (`type=profile`)**: remains the source of truth for static birth data and baseline traits. Initial seeding handled by `seedUserDocs`.
+- **Preferences (`type=preferences`)**: persona enrichment agent updates communication style, likes/dislikes.
+- **Notes (`type=notes`)**: conversation summarizer writes narrative summaries per session with metadata `{ scope: frontline, source: <conversation_id> }`.
+- **Analysis (`type=analysis`)**: dedicated astrology computations (charts, transits) performed by background workers.
 
-### Phase 4: Enhanced Memory & Context
-- [ ] Implement conversation summarization
-- [ ] Set up persona enrichment schedule
-- [ ] Test RAG recall quality
-- [ ] Tune hybrid search weights
+These documents are always created with `shared=true` so both real-time and background agents can recall them.
 
-### Phase 5: Advanced Features
-- [ ] Daily horoscope generation
-- [ ] Transit notifications
-- [ ] Relationship compatibility
-- [ ] Voice-to-voice pipeline
+## Operational Considerations
+- **Triggering**: for now poll Mongo for new `elevenlabs_conversations` entries. Eventually replace with change stream webhook once stable.
+- **Error Handling**: failed summaries should log to `conversation_digest.failures[]` with `error_message` and `timestamp_iso` so we can re-queue.
+- **Secrets**: ElevenLabs + Julep API keys live in Julep Secrets, mirrored in `app/.env`. Never embed raw keys in agent YAML.
+- **Manual Overrides**: `bun run set:memory-token` remains the path to seed Memory Store MCP tokens when auto-provisioning is unavailable.
 
----
-
-## Key Takeaways
-
-1. **Shared Memory = Julep User Documents**: Both agents read/write to the same document store
-2. **Scope Controls Access**: `frontline` docs visible to Astra, `background` internal only
-3. **Recall System**: Automatic context injection via hybrid search
-4. **TTS Ready**: ElevenLabs streaming configured and functional
-5. **MCP Extensibility**: Can add any tool via MCP protocol
-6. **Background Processing**: Tasks update shared memory asynchronously
-7. **Metadata Drives Behavior**: Type, scope, shared flags control document visibility
-
----
-
-## Implementation Priority
-
-**Right now, focus on**:
-1. ✅ Agents created (`bun run sync:agents`)
-2. 🔄 App running and chat working
-3. 🔄 Birth data form + storage
-4. 🔄 Basic Vedic calculation (start simple)
-5. 🔄 Document updates working
-
-**Later, enhance with**:
-- Sophisticated MCP tools
-- Advanced astrology features
-- Voice-to-voice
-- Multiple agent specializations
+## Next Steps Checklist
+- [ ] Build MCP wrapper for ElevenLabs transcript endpoint.
+- [ ] Define `astro_overview` / `conversation_digest` fields on Mongo user schema and backfill existing records.
+- [ ] Author `agents/responder/summarizer.md` prompt with clear guidance for tone, sentiment extraction, and horoscope-focused insights.
+- [ ] Wire a Julep durable task that processes unhandled conversation IDs on a schedule.
+- [ ] Extend `VoiceSession` dynamic variables once Mongo fields exist.
+- [ ] Add smoke tests: verify dynamic variables include new keys when data is present, and ensure background agent writes to both Mongo + Julep docs.

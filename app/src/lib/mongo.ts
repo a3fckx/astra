@@ -58,7 +58,10 @@ export type ElevenLabsConversation = {
 	conversation_id: string;
 	agent_id?: string | null;
 	workflow_id?: string | null;
+	status?: "active" | "completed" | "abandoned";
 	started_at: Date;
+	ended_at?: Date | null;
+	duration_ms?: number | null;
 	updated_at: Date;
 	metadata?: Record<string, unknown> | null;
 };

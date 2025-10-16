@@ -52,7 +52,16 @@ astra/
    - Audio streaming and transcription
    - Agent responses via TTS
    - Dynamic variables injected at session start (user_name, workflow_id, julep_session_id, tokens)
-4. **Memory** — Julep stores per-user docs (`type=profile|preferences|notes`):
+4. **Contextual Updates** — Mid-conversation updates via `sendContextualUpdate`:
+   - On connection, session context is automatically sent (user ID, workflow ID, Julep session, token availability)
+   - Use `sendContextualUpdate()` to inject real-time information during conversation:
+     - Birth chart calculations or transit data
+     - Julep memory recall results
+     - Background task completions
+     - UI state changes or external events
+   - Updates are logged with `[Contextual Update]` prefix for debugging
+   - Example: `sendContextualUpdate(JSON.stringify({ type: "transit_data", payload: {...} }))`
+5. **Memory** — Julep stores per-user docs (`type=profile|preferences|notes`):
    - Profiles seeded at signup (name, email, birth data from Google People API)
    - Conversation summaries written by agent via Memory Store MCP
    - Metadata filters control recall (`scope=frontline|background`)
@@ -150,6 +159,7 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 - We embed `ANCHOR:` comments beside business-critical logic so every agent understands *why* a choice exists. Treat them as living breadcrumbs—update or remove them if the rationale changes.
 - Current anchors to know:
   - `app/src/components/voice-session.tsx` — `mcp-memory-approval` explains auto-approval of Memory Store MCP tool calls when user tokens exist.
+  - `app/src/components/voice-session.tsx` — `session-context-update` documents automatic contextual update sent on connection with session metadata.
   - `app/src/lib/integration-tokens.ts` — `integration-token-lifecycle` documents per-user token resolution with fallback patterns.
 - When you add or modify voice/memory-specific behavior, write a short function-level docstring explaining its role and include an `ANCHOR:` comment if the logic is business-specific.
 
