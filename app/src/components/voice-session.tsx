@@ -347,6 +347,34 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		return trimmed.length > 0 ? trimmed : null;
 	}, [handshake?.prompt]);
 
+	const persistConversation = useCallback(
+		/**
+		 * ANCHOR:conversation-ledger
+		 * ElevenLabs conversation IDs power transcription + follow-up jobs. We log each start so
+		 * background agents can fetch transcripts or metadata without hitting ElevenLabs again.
+		 * Keep this aligned with the /api/responder/conversations route and Mongo schema.
+		 */
+		async (conversationId: string) => {
+			try {
+				await fetch("/api/responder/conversations", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						conversationId,
+						agentId,
+						workflowId: handshake?.session.workflowId ?? WORKFLOW_ID,
+					}),
+				});
+			} catch (persistenceError) {
+				console.error(
+					"Failed to persist ElevenLabs conversation metadata",
+					persistenceError,
+				);
+			}
+		},
+		[agentId, handshake?.session.workflowId],
+	);
+
 	const requestMicrophoneAccess = useCallback(async () => {
 		if (
 			typeof navigator === "undefined" ||
@@ -448,6 +476,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 					: undefined,
 			});
 			console.info("[ElevenLabs] Conversation started", conversationId);
+			void persistConversation(conversationId);
 
 			sessionActiveRef.current = true;
 			contextualUpdateSent.current = false;
@@ -486,6 +515,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		requestMicrophoneAccess,
 		startSession,
 		status,
+		persistConversation,
 	]);
 
 	const handleStop = useCallback(async () => {

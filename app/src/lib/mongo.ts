@@ -40,6 +40,7 @@ export type AstraUser = {
 	date_of_birth?: Date;
 	birth_time?: string;
 	birth_location?: string;
+	elevenlabs_conversations?: string[];
 };
 
 export type AstraSession = {
@@ -49,6 +50,17 @@ export type AstraSession = {
 	agent_id: string;
 	createdAt: Date;
 	updatedAt: Date;
+};
+
+export type ElevenLabsConversation = {
+	_id?: ObjectId;
+	user_id: string;
+	conversation_id: string;
+	agent_id?: string | null;
+	workflow_id?: string | null;
+	started_at: Date;
+	updated_at: Date;
+	metadata?: Record<string, unknown> | null;
 };
 
 export type IntegrationToken = {
@@ -67,6 +79,10 @@ export const getUsers = (): Collection<AstraUser> =>
 
 export const getSessions = (): Collection<AstraSession> =>
 	db.collection<AstraSession>("astra_sessions");
+
+export const getElevenLabsConversations =
+	(): Collection<ElevenLabsConversation> =>
+		db.collection<ElevenLabsConversation>("elevenlabs_conversations");
 
 export const getIntegrationTokens = (): Collection<IntegrationToken> =>
 	db.collection<IntegrationToken>("integration_tokens");
