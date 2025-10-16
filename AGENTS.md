@@ -6,43 +6,56 @@
 
 ## Quick Reference
 
-- **Project:** Astra — multi-user astrology companion (“Jadugar” persona)
-- **Execution Surface:** Next.js 15 (App Router) + Better Auth + MongoDB Atlas
-- **Orchestration:** Julep project `astra` (users, docs, tasks, secrets)
-- **UI Stack:** React 18, TypeScript, Biome for lint/format
-- **Runtime Footprint:** Frontend/UI service only — Python monolith removed
+- **Project:** Astra — multi-user astrology companion ("Jadugar" persona)
+- **Voice Interface:** ElevenLabs React SDK (`@elevenlabs/react`)
+- **Authentication:** Better Auth + Google OAuth + MongoDB Atlas
+- **Orchestration:** Julep (user memory, sessions, agent tasks)
+- **UI Stack:** Next.js 15 (App Router), React 18, TypeScript, Biome
+- **Runtime:** Single Next.js service — no background workers
 
 ### Current Layout
 
 ```
 astra/
-├── app/            # Next.js application (auth, API routes, dashboard)
-├── agents/         # Agent prompts & metadata (e.g., responder persona)
-└── docs/           # Documentation for contributors & agents
+├── app/                    # Next.js application
+│   ├── src/components/     # Voice UI (ElevenLabs SDK)
+│   ├── src/app/api/        # REST APIs (auth, session, signed URLs)
+│   ├── src/lib/            # Utilities (auth, mongo, julep, elevenlabs)
+│   └── scripts/            # Agent sync utility
+├── agents/                 # Julep agent definitions (YAML)
+└── docs/                   # Architecture & persona docs
 ```
 
 **Key Files**
 
-- `app/package.json` — Scripts (`dev`, `build`, `lint`) and Biome setup
-- `app/src/lib/auth.ts` — Better Auth server config (Mongo adapter + Google scopes)
-- `app/src/app/api/responder/messages/route.ts` — Authenticated REST ingress
-- `app/src/pages/api/responder/socket.ts` — WebSocket streaming bridge
-- `app/src/app/dashboard/page.tsx` — Signed-in responder console
-- `agents/responder/prompt.md` — Jadugar system prompt
+- `app/src/components/voice-session.tsx` — Voice UI using ElevenLabs `useConversation` hook
+- `app/src/app/api/responder/session/route.ts` — Session handshake (Julep + integration tokens)
+- `app/src/app/api/elevenlabs/signed-url/route.ts` — Generates signed WebSocket URLs
+- `app/src/lib/auth.ts` — Better Auth config (MongoDB adapter + Google scopes)
+- `app/src/lib/julep-docs.ts` — Julep user/session/memory management
+- `app/src/lib/elevenlabs.ts` — ElevenLabs client initialization
+- `agents/responder/prompt.md` — Jadugar persona prompt
 - `.sessions/template.md` — Session logging template (use via `session.sh`)
 - `.pre-commit-config.yaml` — Syncs `AGENTS.md` to `Claude.md` before commits
 
 ---
 
-## Responder Flow (Target State)
+## Voice Flow (Current Architecture)
 
 1. **Auth** — Better Auth Google provider issues secure session cookie backed by MongoDB.
-2. **Ingress** — `/api/responder/messages` writes authenticated prompts into a queue (Mongo collection or Julep task trigger).
-3. **Processing** — Julep agents consume the queue, call external LLM/TTS providers, and persist deltas to `responder_events`.
-4. **Streaming** — `/api/responder/socket` tail-follows `responder_events` and streams JSON patches to the dashboard UI.
-5. **Memory** — Per-user docs in Julep (`type=profile|preferences|notes`) act as the memory surface; summaries written after each conversation turn.
-
-*Python-based workers, `config.json`, and memory-buffer files have been removed. All stateful agent logic now lives in Julep tasks or future TypeScript utilities.*
+2. **Session Handshake** — `/api/responder/session` returns:
+   - Julep session ID (for memory recall)
+   - Integration tokens (memory-store, elevenlabs)
+   - User context (name, email, birth data)
+3. **Voice Connection** — ElevenLabs React SDK handles:
+   - WebSocket connection via signed URL (`/api/elevenlabs/signed-url`)
+   - Audio streaming and transcription
+   - Agent responses via TTS
+   - Dynamic variables injected at session start (user_name, workflow_id, julep_session_id, tokens)
+4. **Memory** — Julep stores per-user docs (`type=profile|preferences|notes`):
+   - Profiles seeded at signup (name, email, birth data from Google People API)
+   - Conversation summaries written by agent via Memory Store MCP
+   - Metadata filters control recall (`scope=frontline|background`)
 
 ---
 
@@ -52,7 +65,7 @@ astra/
 - Seed each new user with baseline docs: at minimum `type=profile` and `type=preferences` including `scope`, `updated_by`, and `timestamp_iso`.
 - Use doc metadata filters (`scope=frontline|background`, `type=horoscope|notes|profile`) to control recall.
 - Store runtime secrets (e.g., `JULEP_API_KEY`, external provider keys) in Julep Secrets — mirror what lives in `app/.env`.
-- Realtime chats: open sessions with `recall=true` and stream assistant deltas back to the dashboard + TTS provider; persist concise turn summaries into the user doc.
+- Realtime chats: open sessions with `recall=true` so agents can access user memory docs.
 - Background agents: define durable Julep tasks for horoscope refresh, persona enrichment, etc. Each task writes to the same user docs and must respect metadata conventions.
 
 Reference material inside Julep workspace:
@@ -80,6 +93,9 @@ bun run lint
 # Production build
 bun run build
 bun run start
+
+# Sync Julep agents
+bun run sync:agents
 ```
 
 Environment variables (stored in `app/.env` — never commit secrets):
@@ -87,7 +103,9 @@ Environment variables (stored in `app/.env` — never commit secrets):
 - `MONGODB_URI` or `MONGODB_USERNAME` / `MONGODB_PASSWORD` / `MONGODB_CLUSTER`
 - `BETTER_AUTH_SECRET`
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-- Optional toggles: `GOOGLE_ENABLE_BIRTHDAY_SCOPE`, `GOOGLE_ENABLE_GMAIL_READ_SCOPE`
+- `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`
+- `JULEP_API_KEY`, `ASTRA_AGENT_ID`
+- Optional: `GOOGLE_ENABLE_BIRTHDAY_SCOPE`, `GOOGLE_ENABLE_GMAIL_READ_SCOPE`
 
 ---
 
@@ -130,31 +148,29 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 
 - We embed `ANCHOR:` comments beside business-critical logic so every agent understands *why* a choice exists. Treat them as living breadcrumbs—update or remove them if the rationale changes.
 - Current anchors to know:
-  - `app/src/app/api/responder/messages/route.ts` — `workflow-routing` explains why each prompt is tagged with the ChatKit `workflowId`.
-  - `app/src/pages/api/responder/socket.ts` — `change-stream-delta` & `workflow-hot-swap` document the websocket contract that mirrors OpenAI ChatKit.
-  - `app/scripts/responder-worker.ts` — `outbox-reservation`, `event-status-mirror`, and `responder-turn` cover the durable queue semantics.
-  - `app/src/components/responder-console.tsx` — `chatkit-shell`, `workflow-filter`, and `socket-send` describe how the dashboard artifact stays pixel-identical to ChatKit.
-- When you add or modify workflow-specific behavior, write a short function-level docstring explaining its role in the responder flow and include an `ANCHOR:` comment if the logic is business-specific.
+  - `app/src/components/voice-session.tsx` — `mcp-memory-approval` explains auto-approval of Memory Store MCP tool calls when user tokens exist.
+  - `app/src/lib/integration-tokens.ts` — `integration-token-lifecycle` documents per-user token resolution with fallback patterns.
+- When you add or modify voice/memory-specific behavior, write a short function-level docstring explaining its role and include an `ANCHOR:` comment if the logic is business-specific.
 
 ### Testing Expectations
 
 - Run `bun run lint` before handing work back; this is our fast guard against TypeScript or formatting regressions.
-- For responder changes, perform a manual smoke test:
-  1. Load the dashboard, ensure the ChatKit-style panel renders.
-  2. Send a prompt and confirm the outbox row appears in Mongo (`responder_outbox`) with the proper `workflowId`.
-  3. Verify the websocket streams the assistant response into the UI.
-- Worker changes require a local dry-run (`bun run worker:responder`) with seeded data; watch logs for status transitions (`queued → processing → delivered`).
+- For voice changes, perform a manual smoke test:
+  1. Load the homepage, ensure authenticated users see the voice session UI.
+  2. Check browser console for ElevenLabs connection status and agent responses.
+  3. Verify Memory Store MCP auto-approval when integration token exists.
+- For API changes, test session handshake returns correct Julep session ID and integration tokens.
 - If you introduce new anchor comments or business rules, note which test validates them directly (manual, unit, or integration).
 
 ---
 
 ## Quick Links
 
-- 📘 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Next.js + Julep overview
-- 🔄 [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) — Auth & responder flows
-- 🧩 [`docs/COMPONENTS.md`](docs/COMPONENTS.md) — Module-level reference
+- 📘 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System architecture overview
 - 👤 [`docs/PERSONA.md`](docs/PERSONA.md) — Jadugar persona details
+- 🧠 [`docs/SHARED_MEMORY_ARCHITECTURE.md`](docs/SHARED_MEMORY_ARCHITECTURE.md) — Memory Store integration
 - 📝 [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) — Session logging rules
+- 🏃 [`docs/RUN.md`](docs/RUN.md) — Local development setup
 - 🗂️ [`agents/responder/prompt.md`](agents/responder/prompt.md) — System prompt source
 
 ---

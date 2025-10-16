@@ -373,6 +373,10 @@ if (notesCount >= 5) {
 
 ### How Astra Will Use MCP
 
+#### Shared Memory Store Tokens
+
+Runtime agents now pull user-scoped tokens from the `integration_tokens` MongoDB collection. The `/api/integrations/tokens` endpoint resolves the active credential (falling back to the bootstrap token you place in `MEMORY_STORE_DEFAULT_TOKEN`). This keeps the dashboard and background worker aligned on the same MCP session without hard-coding long-lived secrets in YAML. Rotate per-user tokens by upserting new records keyed on `(userId, integration)`.
+
 #### 1. Vedic Astrology Calculations (Custom MCP Server)
 
 We'll create a custom MCP server for Vedic calculations:
