@@ -176,10 +176,7 @@ async function main() {
   }
 
   // Load and sync agents
-  const agentFiles = [
-    "agents/definitions/astra.yaml",
-    "agents/definitions/background-worker.yaml",
-  ];
+  const agentFiles = ["agents/definitions/astra.yaml"];
 
   const results: Record<string, string> = {};
 
@@ -196,13 +193,16 @@ async function main() {
 
   // Output environment variable format
   console.log("\n" + "=".repeat(60));
-  console.log("📋 Add these to your app/.env file:");
+  console.log("📋 Add this to your app/.env file:");
   console.log("=".repeat(60));
-  console.log(`ASTRA_AGENT_ID=${results.Astra || "NOT_CREATED"}`);
   console.log(
     `BACKGROUND_WORKER_AGENT_ID=${results["Astra Background Worker"] || "NOT_CREATED"}`,
   );
   console.log("=".repeat(60));
+  console.log(
+    "\nNote: User-facing conversations are handled by ElevenLabs agent.",
+  );
+  console.log("This Julep agent only processes background tasks.");
 
   // Save to lock file
   const lockData = {
