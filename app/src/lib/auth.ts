@@ -5,9 +5,14 @@ import { ObjectId } from "mongodb";
 import { env, googlePrompt, googleScopes } from "@/lib/env";
 import { fetchGoogleProfileDetails } from "@/lib/google-people";
 import { createJulepUser, seedUserDocs } from "@/lib/julep-docs";
+import { logger } from "@/lib/logger";
 import { getMongoClient, getMongoDb, getUsers } from "@/lib/mongo";
 
-console.info("Configured Google OAuth scopes:", googleScopes());
+const authLogger = logger.child("auth");
+const configuredScopes = googleScopes();
+authLogger.debug("Configured Google OAuth scopes", {
+	scopes: configuredScopes,
+});
 
 const mongoClient = getMongoClient();
 const mongoDb = getMongoDb();
@@ -31,7 +36,7 @@ export const auth = betterAuth({
 			redirectUri: env.googleRedirectUri,
 			accessType: "offline",
 			prompt: googlePrompt,
-			scope: googleScopes(),
+			scope: configuredScopes,
 		},
 	},
 	plugins: [nextCookies()],
@@ -40,7 +45,7 @@ export const auth = betterAuth({
 			create: {
 				after: async (user) => {
 					try {
-						console.log(`Syncing new user to Julep: ${user.email}`);
+						authLogger.info(`Syncing new user to Julep: ${user.email}`);
 
 						const julepUser = await createJulepUser({
 							name: user.name,
@@ -66,11 +71,12 @@ export const auth = betterAuth({
 							email: user.email,
 						});
 
-						console.log(
-							`Successfully synced user ${user.email} with Julep ID: ${julepUser.id}`,
-						);
+						authLogger.info("Successfully synced user with Julep", {
+							email: user.email,
+							julepUserId: julepUser.id,
+						});
 					} catch (error) {
-						console.error("Failed to sync user to Julep:", error);
+						authLogger.error("Failed to sync user to Julep", error as Error);
 					}
 				},
 			},
@@ -102,8 +108,9 @@ export const auth = betterAuth({
 						}
 
 						if (!userRecord) {
-							console.warn(
-								`Unable to locate user record for Google account ${account.accountId}`,
+							authLogger.warn(
+								"Unable to locate user record for Google account",
+								{ accountId: account.accountId },
 							);
 							return;
 						}
@@ -147,7 +154,10 @@ export const auth = betterAuth({
 							$set: updates,
 						});
 					} catch (error) {
-						console.error("Failed to enrich Google account profile:", error);
+						authLogger.error(
+							"Failed to enrich Google account profile",
+							error as Error,
+						);
 					}
 				},
 			},

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "memory-store": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://beta.memory.store/mcp/?token=${MEMORY_STORE_MCP_TOKEN}"
+      ],
+      "env": {}
+    }
+  }
+}

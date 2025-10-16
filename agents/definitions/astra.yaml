@@ -51,3 +51,16 @@ tools:
       resource: user
       subresource: doc
       operation: search
+
+  - name: memory_store
+    description: Access Astra's shared memory surface via the Memory Store MCP server
+    type: integration
+    integration:
+      provider: mcp
+      method: list_tools
+      setup:
+        transport: command
+        command: npx
+        args:
+          - mcp-remote
+          - https://beta.memory.store/mcp/?token={MEMORY_STORE_MCP_TOKEN}
