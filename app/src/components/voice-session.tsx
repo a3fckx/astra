@@ -1,7 +1,7 @@
 "use client";
 
 import { useConversation } from "@elevenlabs/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const WORKFLOW_ID = "astra-responder";
 
@@ -77,12 +77,14 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 	const [micStatus, setMicStatus] = useState<
 		"idle" | "requesting" | "granted" | "denied" | "unsupported"
 	>("idle");
+	const [micMuted, setMicMuted] = useState(false);
+	const [isStarting, setIsStarting] = useState(false);
 	const [handshake, setHandshake] = useState<SessionHandshake | null>(null);
 	const [handshakeLoaded, setHandshakeLoaded] = useState(false);
 	const [mcpConnections, setMcpConnections] = useState<Record<string, boolean>>(
 		{},
 	);
-	const hasStarted = useRef(false);
+	const sessionActiveRef = useRef(false);
 	const activityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
 		null,
 	);
@@ -96,6 +98,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		sendContextualUpdate,
 		sendMCPToolApprovalResult,
 	} = useConversation({
+		micMuted,
 		onMessage: (payload) => {
 			if (!payload || typeof payload !== "object") {
 				return;
@@ -124,7 +127,10 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 					: "ElevenLabs conversation error";
 			console.error("ElevenLabs conversation error", resolvedMessage, details);
 			setError(resolvedMessage);
-			setStatus(hasStarted.current ? "disconnected" : "idle");
+			const wasActive = sessionActiveRef.current;
+			sessionActiveRef.current = false;
+			contextualUpdateSent.current = false;
+			setStatus(wasActive ? "disconnected" : "idle");
 		},
 		onStatusChange: ({ status: next }) => {
 			if (next === "connected" || next === "connecting") {
@@ -135,7 +141,12 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 				setStatus("disconnected");
 				return;
 			}
-			setStatus(hasStarted.current ? "disconnected" : "idle");
+			setStatus(sessionActiveRef.current ? "disconnected" : "idle");
+		},
+		onDisconnect: () => {
+			sessionActiveRef.current = false;
+			contextualUpdateSent.current = false;
+			setStatus("disconnected");
 		},
 		onConversationMetadata: (metadata) => {
 			console.info("[ElevenLabs] Conversation metadata:", metadata);
@@ -219,7 +230,8 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 
 	useEffect(() => {
 		return () => {
-			hasStarted.current = false;
+			sessionActiveRef.current = false;
+			contextualUpdateSent.current = false;
 			if (activityIntervalRef.current) {
 				clearInterval(activityIntervalRef.current);
 				activityIntervalRef.current = null;
@@ -293,6 +305,154 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		});
 	}, [handshake, userDisplayName]);
 
+	const requestMicrophoneAccess = useCallback(async () => {
+		if (
+			typeof navigator === "undefined" ||
+			!navigator.mediaDevices ||
+			!navigator.mediaDevices.getUserMedia
+		) {
+			setMicStatus("unsupported");
+			throw new Error(
+				"Microphone access is not supported in this environment.",
+			);
+		}
+
+		if (micStatus === "granted") {
+			return;
+		}
+
+		if (micRequestRef.current) {
+			await micRequestRef.current;
+			return;
+		}
+
+		setMicStatus("requesting");
+		const request = navigator.mediaDevices
+			.getUserMedia({ audio: true })
+			.then((stream) => {
+				stream.getTracks().forEach((track) => {
+					track.stop();
+				});
+				setMicStatus("granted");
+			})
+			.catch((micError) => {
+				setMicStatus("denied");
+				throw micError instanceof Error
+					? micError
+					: new Error("Microphone access denied");
+			})
+			.finally(() => {
+				micRequestRef.current = null;
+			});
+
+		micRequestRef.current = request;
+		await request;
+	}, [micStatus]);
+
+	const handleStart = useCallback(async () => {
+		if (!agentId) {
+			setError("ElevenLabs agent configuration missing. Contact support.");
+			return;
+		}
+		if (isStarting || status === "connecting" || status === "connected") {
+			return;
+		}
+		if (!handshakeLoaded) {
+			setWarning("Still preparing your session. Please try again momentarily.");
+			return;
+		}
+		if (!handshake) {
+			setError(
+				"Session context unavailable. Refresh the page and sign in again.",
+			);
+			return;
+		}
+
+		setIsStarting(true);
+		setError(null);
+		setWarning(null);
+		setMemoryWarning(null);
+
+		try {
+			await requestMicrophoneAccess();
+			setStatus("connecting");
+
+			const response = await fetch("/api/elevenlabs/signed-url", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ agentId }),
+			});
+
+			if (!response.ok) {
+				throw new Error(`Failed to get signed URL (${response.status})`);
+			}
+
+			const { signedUrl } = (await response.json()) as { signedUrl: string };
+
+			const conversationId = await startSession({
+				signedUrl,
+				connectionType: "websocket",
+				userId: handshake.session.user.id,
+				dynamicVariables,
+				textOnly: false,
+			});
+			console.info("[ElevenLabs] Conversation started", conversationId);
+
+			sessionActiveRef.current = true;
+			contextualUpdateSent.current = false;
+			setMicMuted(false);
+			setError(null);
+		} catch (sessionError) {
+			sessionActiveRef.current = false;
+			contextualUpdateSent.current = false;
+
+			const baseMessage =
+				sessionError instanceof Error && sessionError.message.trim().length > 0
+					? sessionError.message
+					: "Failed to start ElevenLabs voice session.";
+
+			if (micStatus === "denied") {
+				setError(MICROPHONE_WARNING);
+			} else if (micStatus === "unsupported") {
+				setError(MICROPHONE_UNSUPPORTED_WARNING);
+			} else {
+				setError(baseMessage);
+			}
+
+			console.error("Failed to start ElevenLabs voice session", sessionError);
+			setStatus("idle");
+		} finally {
+			setIsStarting(false);
+		}
+	}, [
+		agentId,
+		dynamicVariables,
+		handshake,
+		handshakeLoaded,
+		isStarting,
+		micStatus,
+		requestMicrophoneAccess,
+		startSession,
+		status,
+	]);
+
+	const handleStop = useCallback(async () => {
+		if (status === "idle" || status === "disconnected") {
+			return;
+		}
+
+		try {
+			await endSession();
+		} catch (stopError) {
+			console.error("Failed to stop ElevenLabs voice session", stopError);
+		} finally {
+			sessionActiveRef.current = false;
+			contextualUpdateSent.current = false;
+			setStatus("idle");
+			setMicMuted(false);
+		}
+	}, [endSession, status]);
+
 	useEffect(() => {
 		if (!handshakeLoaded || !handshake) {
 			return;
@@ -320,109 +480,6 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 			setMemoryWarning(null);
 		}
 	}, [handshakeLoaded, handshake, mcpConnections]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: Session should only start once when agentId and handshake are ready
-	useEffect(() => {
-		if (!agentId || !handshakeLoaded || hasStarted.current) {
-			return;
-		}
-
-		if (micStatus === "denied" || micStatus === "unsupported") {
-			return;
-		}
-
-		hasStarted.current = true;
-
-		const run = async () => {
-			try {
-				setStatus("connecting");
-
-				const ensureMicrophone = async () => {
-					if (
-						typeof navigator === "undefined" ||
-						!navigator.mediaDevices ||
-						!navigator.mediaDevices.getUserMedia
-					) {
-						setMicStatus("unsupported");
-						throw new Error(
-							"Microphone access is not supported in this environment.",
-						);
-					}
-
-					if (micStatus === "granted") {
-						return;
-					}
-
-					if (micRequestRef.current) {
-						await micRequestRef.current;
-						return;
-					}
-
-					setMicStatus("requesting");
-					const request = navigator.mediaDevices
-						.getUserMedia({ audio: true })
-						.then((stream) => {
-							stream.getTracks().forEach((track) => {
-								track.stop();
-							});
-							setMicStatus("granted");
-						})
-						.catch((micError) => {
-							setMicStatus("denied");
-							throw micError instanceof Error
-								? micError
-								: new Error("Microphone access denied");
-						})
-						.finally(() => {
-							micRequestRef.current = null;
-						});
-
-					micRequestRef.current = request;
-					await request;
-				};
-
-				await ensureMicrophone();
-
-				const response = await fetch("/api/elevenlabs/signed-url", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ agentId }),
-				});
-
-				if (!response.ok) {
-					throw new Error(`Failed to get signed URL (${response.status})`);
-				}
-
-				const { signedUrl } = (await response.json()) as { signedUrl: string };
-
-				const conversationId = await startSession({
-					signedUrl,
-					connectionType: "websocket",
-					userId: handshake?.session.user.id,
-					dynamicVariables,
-				});
-
-				console.info("[ElevenLabs] Conversation started", conversationId);
-				setError(null);
-			} catch (sessionError) {
-				hasStarted.current = false;
-				console.error("Failed to start ElevenLabs voice session", sessionError);
-				setError(
-					sessionError instanceof Error
-						? sessionError.message
-						: "Failed to start ElevenLabs voice session.",
-				);
-				setStatus("disconnected");
-				if (micStatus === "denied") {
-					setError(MICROPHONE_WARNING);
-				} else if (micStatus === "unsupported") {
-					setError(MICROPHONE_UNSUPPORTED_WARNING);
-				}
-			}
-		};
-
-		void run();
-	}, [agentId, handshakeLoaded, micStatus]);
 
 	useEffect(() => {
 		if (status !== "connected") {
@@ -480,6 +537,25 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		}
 		contextualUpdateSent.current = true;
 	}, [status, handshakeLoaded, handshake, sendContextualUpdate]);
+
+	const handshakeReady = handshakeLoaded && Boolean(handshake);
+	const isConnected = status === "connected";
+	const isConnecting = status === "connecting";
+	const canAttemptStart = handshakeReady && micStatus !== "unsupported";
+	const startDisabled =
+		!canAttemptStart || isStarting || isConnecting || isConnected;
+	const stopDisabled = status === "idle" || status === "disconnected";
+	const startButtonLabel = isStarting
+		? "Starting…"
+		: isConnected
+			? "Connected"
+			: "Start voice session";
+	const stopButtonLabel =
+		status === "connecting" || isConnected ? "End session" : "Stop session";
+	const micToggleLabel = micMuted ? "Unmute mic" : "Mute mic";
+	const sessionDescription = isConnected
+		? `Hey ${userDisplayName}, Jadugar is listening. Speak naturally and we’ll take it from here.`
+		: `Hey ${userDisplayName}, press start when you’re ready to talk to Jadugar. We’ll open the mic once you approve it.`;
 
 	return (
 		<div
@@ -539,8 +615,77 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 					opacity: 0.85,
 				}}
 			>
-				Hey {userDisplayName}, Jadugar is listening. Speak naturally and we’ll
-				take it from here.
+				{sessionDescription}
+			</div>
+
+			<div
+				style={{
+					display: "flex",
+					flexWrap: "wrap",
+					justifyContent: "center",
+					gap: "0.75rem",
+					marginTop: "0.5rem",
+				}}
+			>
+				<button
+					type="button"
+					onClick={handleStart}
+					disabled={startDisabled}
+					style={{
+						padding: "0.7rem 1.5rem",
+						borderRadius: "999px",
+						fontWeight: 600,
+						border: "1px solid rgba(148, 163, 184, 0.35)",
+						background: startDisabled
+							? "rgba(51, 65, 85, 0.55)"
+							: isConnected
+								? "#16a34a"
+								: "#2563eb",
+						color: startDisabled ? "#94a3b8" : "#f8fafc",
+						cursor: startDisabled ? "not-allowed" : "pointer",
+						transition: "background 150ms ease, transform 150ms ease",
+						minWidth: "11rem",
+					}}
+				>
+					{startButtonLabel}
+				</button>
+				<button
+					type="button"
+					onClick={handleStop}
+					disabled={stopDisabled}
+					style={{
+						padding: "0.7rem 1.4rem",
+						borderRadius: "999px",
+						fontWeight: 600,
+						border: "1px solid rgba(148, 163, 184, 0.35)",
+						background: stopDisabled ? "rgba(51, 65, 85, 0.35)" : "#b91c1c",
+						color: stopDisabled ? "#94a3b8" : "#fee2e2",
+						cursor: stopDisabled ? "not-allowed" : "pointer",
+						minWidth: "10rem",
+					}}
+				>
+					{stopButtonLabel}
+				</button>
+				{(isConnected || isConnecting) && (
+					<button
+						type="button"
+						onClick={() => setMicMuted((prev) => !prev)}
+						style={{
+							padding: "0.7rem 1.4rem",
+							borderRadius: "999px",
+							fontWeight: 600,
+							border: "1px solid rgba(148, 163, 184, 0.35)",
+							background: micMuted
+								? "rgba(107, 114, 128, 0.4)"
+								: "rgba(37, 99, 235, 0.25)",
+							color: "#e2e8f0",
+							cursor: "pointer",
+							minWidth: "10rem",
+						}}
+					>
+						{micToggleLabel}
+					</button>
+				)}
 			</div>
 
 			{warning && !error && (
@@ -599,6 +744,21 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 					}}
 				>
 					{MICROPHONE_UNSUPPORTED_WARNING}
+				</div>
+			)}
+
+			{micMuted && isConnected && !error && (
+				<div
+					style={{
+						marginTop: "0.25rem",
+						padding: "0.65rem 0.9rem",
+						borderRadius: "0.75rem",
+						background: "rgba(59, 130, 246, 0.18)",
+						color: "#bfdbfe",
+						fontSize: "0.85rem",
+					}}
+				>
+					Microphone muted — Jadugar can’t hear you until you unmute.
 				</div>
 			)}
 
