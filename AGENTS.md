@@ -63,9 +63,8 @@ astra/
    - Example: `sendContextualUpdate(JSON.stringify({ type: "transit_data", payload: {...} }))`
 5. **Memory** — Julep stores per-user docs (`type=profile|preferences|notes`):
    - Profiles seeded at signup (name, email, birth data from Google People API)
-   - Conversation summaries written by agent via Memory Store MCP
+   - Conversation summaries stored in user docs
    - Metadata filters control recall (`scope=frontline|background`)
-   - When we have a manual Memory Store token for a user, seed it via `cd app && bun run set:memory-token --email <user-email> --token <token>` so the voice session can auto-approve MCP calls until automatic provisioning is in place.
 
 ---
 
@@ -158,7 +157,6 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 
 - We embed `ANCHOR:` comments beside business-critical logic so every agent understands *why* a choice exists. Treat them as living breadcrumbs—update or remove them if the rationale changes.
 - Current anchors to know:
-  - `app/src/components/voice-session.tsx` — `mcp-memory-approval` explains auto-approval of Memory Store MCP tool calls when user tokens exist.
   - `app/src/components/voice-session.tsx` — `session-context-update` documents automatic contextual update sent on connection with session metadata.
   - `app/src/lib/integration-tokens.ts` — `integration-token-lifecycle` documents per-user token resolution with fallback patterns.
 - When you add or modify voice/memory-specific behavior, write a short function-level docstring explaining its role and include an `ANCHOR:` comment if the logic is business-specific.
@@ -169,7 +167,6 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 - For voice changes, perform a manual smoke test:
   1. Load the homepage, ensure authenticated users see the voice session UI.
   2. Check browser console for ElevenLabs connection status and agent responses.
-  3. Verify Memory Store MCP auto-approval when integration token exists.
 - For API changes, test session handshake returns correct Julep session ID and integration tokens.
 - If you introduce new anchor comments or business rules, note which test validates them directly (manual, unit, or integration).
 

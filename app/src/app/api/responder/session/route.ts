@@ -11,7 +11,7 @@ import { getUsers, type IntegrationToken } from "@/lib/mongo";
 import { getResponderPromptTemplate } from "@/lib/prompt-loader";
 
 const routeLogger = logger.child("responder-session-route");
-const KNOWN_INTEGRATIONS: IntegrationName[] = ["memory-store", "elevenlabs"];
+const KNOWN_INTEGRATIONS: IntegrationName[] = ["elevenlabs"];
 const DEFAULT_WORKFLOW_ID = "astra-responder";
 
 const normalizeMetadata = (input: IntegrationToken["metadata"]) =>
@@ -80,7 +80,6 @@ export async function GET(request: Request) {
 		IntegrationName,
 		ReturnType<typeof tokenPayload>
 	> = {
-		"memory-store": null,
 		elevenlabs: null,
 	};
 
