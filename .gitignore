@@ -42,6 +42,9 @@ app/package-lock.json
 
 Claude.md
 
+# Claude configuration (contains sensitive MCP server configs)
+.claude/
+
 # Session tracking (personal, not committed)
 .sessions/SESSION.md
 .sessions/SESSION_*.md
