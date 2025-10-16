@@ -1,0 +1,71 @@
+name: Daily Horoscope Update
+description: Generate and update daily horoscope for a user based on their birth data
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - julep_user_id
+  properties:
+    julep_user_id:
+      type: string
+      description: The Julep user ID
+
+tools:
+  - name: search_user_profile
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: create_horoscope_doc
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: create
+
+main:
+  # Step 1: Search for user profile with birth data
+  - tool: search_user_profile
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "date of birth"
+      metadata_filter:
+        type: "profile"
+        scope: "frontline"
+    
+  # Step 2: Extract birth data
+  - evaluate:
+      birth_data: $ steps[0].output.docs[0].content if steps[0].output.docs else "Unknown"
+  
+  # Step 3: Generate horoscope (simplified - in production would call external API)
+  - prompt: |-
+      You are an expert astrologer. Based on the following birth information:
+      
+      $ f"{_.birth_data}"
+      
+      Generate a personalized daily horoscope for today. Include:
+      - Overall energy and mood for the day
+      - Key opportunities or challenges
+      - Advice for relationships, career, and personal growth
+      - Lucky colors or numbers if applicable
+      
+      Keep it concise but insightful (2-3 paragraphs).
+    unwrap: true
+  
+  # Step 4: Write horoscope to user docs
+  - tool: create_horoscope_doc
+    arguments:
+      user_id: $ _.julep_user_id
+      title: $ f"Daily Horoscope - {datetime.now().strftime('%Y-%m-%d')}"
+      content:
+        - $ steps[2].output
+      metadata:
+        type: "horoscope"
+        scope: "background"
+        shared: true
+        updated_by: $ _.current_task_id
+        timestamp_iso: $ datetime.now().isoformat()
+        source: "daily_horoscope_task"

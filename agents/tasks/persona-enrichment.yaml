@@ -1,0 +1,102 @@
+name: User Persona Enrichment
+description: Analyze conversation history and update user preferences based on patterns
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - julep_user_id
+  properties:
+    julep_user_id:
+      type: string
+      description: The Julep user ID
+    min_conversations:
+      type: number
+      description: Minimum number of conversations before analysis
+      default: 5
+
+tools:
+  - name: search_conversation_notes
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: get_user_preferences
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: update_preferences_doc
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: create
+
+main:
+  # Step 1: Retrieve all conversation notes
+  - tool: search_conversation_notes
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "conversation"
+      metadata_filter:
+        type: "notes"
+        scope: "frontline"
+      limit: 50
+  
+  # Step 2: Check if we have enough data
+  - evaluate:
+      num_conversations: $ len(steps[0].output.docs)
+  
+  - if: $ _.num_conversations < _.min_conversations
+    then:
+      - return:
+          message: $ f"Not enough conversations ({_.num_conversations}/{_.min_conversations}) for analysis"
+          skipped: true
+    else:
+      - continue: null
+  
+  # Step 3: Analyze conversation patterns
+  - prompt: |-
+      Analyze the following conversation summaries and extract user preferences, interests, and communication patterns:
+      
+      $ f"{'\n\n---\n\n'.join([doc.content[0] for doc in steps[0].output.docs])}"
+      
+      Provide a structured analysis including:
+      1. Communication style (formal/casual, verbose/concise)
+      2. Topics of interest
+      3. Recurring questions or concerns
+      4. Emotional patterns (optimistic, anxious, curious, etc.)
+      5. Preferred response style
+      6. Time preferences (if mentioned)
+      
+      Format as a clear, structured document.
+    unwrap: true
+  
+  # Step 4: Get existing preferences
+  - tool: get_user_preferences
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "preferences"
+      metadata_filter:
+        type: "preferences"
+  
+  # Step 5: Update preferences document
+  - tool: update_preferences_doc
+    arguments:
+      user_id: $ _.julep_user_id
+      title: "User Preferences (Updated)"
+      content:
+        - $ steps[2].output
+      metadata:
+        type: "preferences"
+        scope: "frontline"
+        shared: true
+        updated_by: $ _.current_task_id
+        timestamp_iso: $ datetime.now().isoformat()
+        source: "persona_enrichment_task"
+        conversations_analyzed: $ _.num_conversations

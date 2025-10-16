@@ -1,5 +1,11 @@
-import { type Collection, type Document, MongoClient } from "mongodb";
+import {
+	type Collection,
+	type Document,
+	MongoClient,
+	type ObjectId,
+} from "mongodb";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 declare global {
 	// eslint-disable-next-line no-var
@@ -7,39 +13,63 @@ declare global {
 }
 
 const client = global.__mongoClient ?? new MongoClient(env.mongodbUri);
+const mongoLogger = logger.child("mongo");
 if (process.env.NODE_ENV !== "production") {
 	global.__mongoClient = client;
 }
 
 void client.connect().catch((error) => {
-	console.error("Failed to initialize MongoDB client", error);
+	mongoLogger.error("Failed to initialize MongoDB client", error as Error);
 });
 
 const db = client.db(env.mongodbDb);
 
-export type ResponderEvent = {
-	_id?: string;
-	userId: string;
-	role: "assistant" | "system" | "user";
-	content: string;
+export type AstraUser = {
+	_id?: ObjectId;
+	id: string;
+	name: string;
+	email: string;
+	image?: string;
+	emailVerified: boolean;
 	createdAt: Date;
-	metadata?: Record<string, unknown> | null;
+	updatedAt: Date;
+	julep_user_id?: string;
+	julep_project: "astra";
+	birth_day?: number;
+	birth_month?: number;
+	date_of_birth?: Date;
+	birth_time?: string;
+	birth_location?: string;
 };
 
-export type ResponderOutboxMessage = {
+export type AstraSession = {
 	_id?: string;
-	userId: string;
-	content: string;
+	user_id: string;
+	julep_session_id: string;
+	agent_id: string;
 	createdAt: Date;
-	status: "pending" | "processing" | "delivered" | "failed";
-	metadata?: Record<string, unknown> | null;
+	updatedAt: Date;
 };
 
-export const getResponderEvents = (): Collection<ResponderEvent> =>
-	db.collection<ResponderEvent>("responder_events");
+export type IntegrationToken = {
+	_id?: ObjectId;
+	userId: string;
+	integration: "memory-store" | "elevenlabs";
+	token: string;
+	expiresAt?: Date | null;
+	metadata?: Record<string, unknown> | null;
+	createdAt: Date;
+	updatedAt: Date;
+};
 
-export const getResponderOutbox = (): Collection<ResponderOutboxMessage> =>
-	db.collection<ResponderOutboxMessage>("responder_outbox");
+export const getUsers = (): Collection<AstraUser> =>
+	db.collection<AstraUser>("user");
+
+export const getSessions = (): Collection<AstraSession> =>
+	db.collection<AstraSession>("astra_sessions");
+
+export const getIntegrationTokens = (): Collection<IntegrationToken> =>
+	db.collection<IntegrationToken>("integration_tokens");
 
 export const getCollection = <TDocument extends Document>(
 	name: string,

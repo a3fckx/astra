@@ -486,18 +486,17 @@ What's one tiny task you can finish today?
 ## Implementation Notes
 
 ### Prompt File
-- Lives in: `responder.md`
+- Location: `agents/responder/prompt.md`
 - Contains persona specification + variable placeholders
-- Rendered by `elevenlabs_agent_runner.py` before session init
+- Loaded by Julep responder task (or future TypeScript worker) before each session
 
 ### Variable Injection
 - Memory buffer fields → `{{placeholder}}` replacement
-- Happens at session start + mid-session via contextual updates
+- Populate placeholders using frontline Julep docs and current message context
 - See [docs/MEMORY_BUFFER.md](MEMORY_BUFFER.md) for field specs
 
 ### Voice Configuration
-- ElevenLabs voice ID configurable in `config.json`
-- Can be overridden via environment variable
+- Store ElevenLabs voice credentials in Julep Secrets and surface via task configuration
 - Choose warm, conversational female voice for optimal persona match
 
 ---

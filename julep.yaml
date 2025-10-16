@@ -1,0 +1,20 @@
+# Astra Julep Project Configuration
+# This file defines agents and tasks for the Astra astrology platform
+
+project: astra
+
+agents:
+  - definition: agents/definitions/astra.yaml
+  - definition: agents/definitions/background-worker.yaml
+
+tasks:
+  # Tasks for the frontline Astra agent
+  - agent_id: "{agents[0].id}"
+    definition: agents/tasks/persona-enrichment.yaml
+  
+  # Tasks for the background worker
+  - agent_id: "{agents[1].id}"
+    definition: agents/tasks/horoscope-refresher.yaml
+
+# Global tools available to all agents (optional)
+tools: []
