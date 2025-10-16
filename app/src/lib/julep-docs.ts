@@ -1,4 +1,8 @@
 import { type JulepDocMetadata, julepClient, julepEnv } from "@/lib/julep";
+import { logger } from "@/lib/logger";
+import { getSessions } from "@/lib/mongo";
+
+const docsLogger = logger.child("julep-docs");
 
 export async function createJulepUser(userData: {
 	name: string;
@@ -17,7 +21,7 @@ export async function createJulepUser(userData: {
 
 		return user;
 	} catch (error) {
-		console.error("Failed to create Julep user:", error);
+		docsLogger.error("Failed to create Julep user", error as Error);
 		throw error;
 	}
 }
@@ -73,9 +77,12 @@ export async function seedUserDocs(
 			} as JulepDocMetadata,
 		});
 
-		console.log(`Successfully seeded docs for Julep user ${julepUserId}`);
+		docsLogger.info("Seeded Julep docs for user", {
+			julepUserId,
+			email: userData.email,
+		});
 	} catch (error) {
-		console.error("Failed to seed user docs:", error);
+		docsLogger.error("Failed to seed user docs", error as Error);
 		throw error;
 	}
 }
@@ -95,7 +102,7 @@ export async function searchUserDocs(
 
 		return results;
 	} catch (error) {
-		console.error("Failed to search user docs:", error);
+		docsLogger.error("Failed to search user docs", error as Error);
 		throw error;
 	}
 }
@@ -122,15 +129,15 @@ export async function writeConversationSummary(
 			} as JulepDocMetadata,
 		});
 	} catch (error) {
-		console.error("Failed to write conversation summary:", error);
+		docsLogger.error("Failed to write conversation summary", error as Error);
 	}
 }
 
 export async function createOrGetSession(julepUserId: string, agentId: string) {
 	try {
 		const session = await julepClient.sessions.create({
-			userId: julepUserId,
-			agentId,
+			user: julepUserId,
+			agent: agentId,
 			recall: true,
 			recallOptions: {
 				mode: "hybrid",
@@ -146,7 +153,37 @@ export async function createOrGetSession(julepUserId: string, agentId: string) {
 
 		return session;
 	} catch (error) {
-		console.error("Failed to create Julep session:", error);
+		docsLogger.error("Failed to create Julep session", error as Error);
 		throw error;
 	}
+}
+
+export async function getOrCreateJulepSession(
+	julepUserId: string,
+): Promise<string> {
+	if (!julepEnv.astraAgentId) {
+		throw new Error("ASTRA_AGENT_ID not configured");
+	}
+
+	const sessionsCollection = getSessions();
+	const existingSession = await sessionsCollection.findOne({
+		user_id: julepUserId,
+		agent_id: julepEnv.astraAgentId,
+	});
+
+	if (existingSession) {
+		return existingSession.julep_session_id;
+	}
+
+	const session = await createOrGetSession(julepUserId, julepEnv.astraAgentId);
+
+	await sessionsCollection.insertOne({
+		user_id: julepUserId,
+		julep_session_id: session.id,
+		agent_id: julepEnv.astraAgentId,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
+
+	return session.id;
 }

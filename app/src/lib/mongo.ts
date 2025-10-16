@@ -5,6 +5,7 @@ import {
 	type ObjectId,
 } from "mongodb";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 declare global {
 	// eslint-disable-next-line no-var
@@ -12,12 +13,13 @@ declare global {
 }
 
 const client = global.__mongoClient ?? new MongoClient(env.mongodbUri);
+const mongoLogger = logger.child("mongo");
 if (process.env.NODE_ENV !== "production") {
 	global.__mongoClient = client;
 }
 
 void client.connect().catch((error) => {
-	console.error("Failed to initialize MongoDB client", error);
+	mongoLogger.error("Failed to initialize MongoDB client", error as Error);
 });
 
 const db = client.db(env.mongodbDb);
@@ -49,29 +51,15 @@ export type AstraSession = {
 	updatedAt: Date;
 };
 
-export type ResponderEvent = {
+export type IntegrationToken = {
 	_id?: ObjectId;
 	userId: string;
-	workflowId?: string;
-	role: "assistant" | "system" | "user";
-	content: string;
-	createdAt: Date;
+	integration: "memory-store" | "elevenlabs";
+	token: string;
+	expiresAt?: Date | null;
 	metadata?: Record<string, unknown> | null;
-};
-
-export type ResponderOutboxMessage = {
-	_id?: ObjectId;
-	userId: string;
-	workflowId?: string;
-	content: string;
 	createdAt: Date;
-	status: "pending" | "processing" | "delivered" | "failed";
-	metadata?: Record<string, unknown> | null;
-	processingStartedAt?: Date;
-	updatedAt?: Date;
-	workerId?: string;
-	failedAt?: Date;
-	error?: string;
+	updatedAt: Date;
 };
 
 export const getUsers = (): Collection<AstraUser> =>
@@ -80,11 +68,8 @@ export const getUsers = (): Collection<AstraUser> =>
 export const getSessions = (): Collection<AstraSession> =>
 	db.collection<AstraSession>("astra_sessions");
 
-export const getResponderEvents = (): Collection<ResponderEvent> =>
-	db.collection<ResponderEvent>("responder_events");
-
-export const getResponderOutbox = (): Collection<ResponderOutboxMessage> =>
-	db.collection<ResponderOutboxMessage>("responder_outbox");
+export const getIntegrationTokens = (): Collection<IntegrationToken> =>
+	db.collection<IntegrationToken>("integration_tokens");
 
 export const getCollection = <TDocument extends Document>(
 	name: string,
