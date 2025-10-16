@@ -143,7 +143,8 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 			}
 			setStatus(sessionActiveRef.current ? "disconnected" : "idle");
 		},
-		onDisconnect: () => {
+		onDisconnect: (details) => {
+			console.info("[ElevenLabs] Conversation disconnected", details);
 			sessionActiveRef.current = false;
 			contextualUpdateSent.current = false;
 			setStatus("disconnected");
@@ -202,6 +203,14 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 					setMemoryWarning(
 						"Memory Store approval requested, but no token is stored for this user.",
 					);
+					try {
+						sendMCPToolApprovalResult(toolId, false);
+					} catch (rejectError) {
+						console.error(
+							"Failed to reject Memory Store MCP tool call without token",
+							rejectError,
+						);
+					}
 				}
 				return;
 			}
