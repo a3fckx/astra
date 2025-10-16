@@ -17,9 +17,15 @@ authLogger.debug("Configured Google OAuth scopes", {
 const mongoClient = getMongoClient();
 const mongoDb = getMongoDb();
 
+const resolveAuthBaseUrl = () => {
+	const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+	// ANCHOR: better-auth-base-path — Better Auth mounts routes under /api/auth, so baseURL must include the API segment.
+	return new URL("/api/auth", appUrl).toString().replace(/\/$/, "");
+};
+
 export const auth = betterAuth({
 	secret: env.betterAuthSecret,
-	baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+	baseURL: resolveAuthBaseUrl(),
 	database: mongodbAdapter(mongoDb, { client: mongoClient }),
 	session: {
 		cookieCache: {
