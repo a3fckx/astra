@@ -10,7 +10,6 @@
     "type-check": "biome check",
     "sync:agents": "bun run scripts/sync-agents.ts",
     "set:memory-token": "bun run scripts/set-memory-token.ts",
-    "setup:background-worker": "bun run scripts/setup-background-worker.ts",
     "test": "bun --env-file=.env test",
     "test:watch": "bun --env-file=.env test --watch",
     "test:coverage": "bun --env-file=.env test --coverage"
