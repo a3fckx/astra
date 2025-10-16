@@ -598,25 +598,26 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 			return;
 		}
 
-		try {
-			sendContextualUpdate(
-				JSON.stringify({
-					type: "session_context",
-					userId: handshake.session.user.id,
-					userEmail: handshake.session.user.email,
-					workflowId: handshake.session.workflowId ?? WORKFLOW_ID,
-					julepSessionId: handshake.session.julep?.sessionId,
-					memoryStoreTokenAvailable:
-						(handshake.integrations["memory-store"]?.token?.trim().length ??
-							0) > 0,
-				}),
-			);
-		} catch (contextError) {
-			console.error(
-				"Failed to send ElevenLabs contextual update",
-				contextError,
-			);
-		}
+		// Temporarily disable contextual update
+		// try {
+		// 	sendContextualUpdate(
+		// 		JSON.stringify({
+		// 			type: "session_context",
+		// 			userId: handshake.session.user.id,
+		// 			userEmail: handshake.session.user.email,
+		// 			workflowId: handshake.session.workflowId ?? WORKFLOW_ID,
+		// 			julepSessionId: handshake.session.julep?.sessionId,
+		// 			memoryStoreTokenAvailable:
+		// 				(handshake.integrations["memory-store"]?.token?.trim().length ??
+		// 					0) > 0,
+		// 		}),
+		 // 	);
+		// } catch (contextError) {
+		// 	console.error(
+		// 		"Failed to send ElevenLabs contextual update",
+		// 		contextError,
+		 // 	);
+			// }
 		contextualUpdateSent.current = true;
 	}, [status, handshakeLoaded, handshake, sendContextualUpdate]);
 
