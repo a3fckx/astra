@@ -465,15 +465,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 				userId: handshake.session.user.id,
 				dynamicVariables,
 				textOnly: false,
-				overrides: agentPrompt
-					? {
-							agent: {
-								prompt: {
-									prompt: agentPrompt,
-								},
-							},
-						}
-					: undefined,
+				overrides: undefined, // Temporarily disable prompt override to test
 			});
 			console.info("[ElevenLabs] Conversation started", conversationId);
 			void persistConversation(conversationId);
