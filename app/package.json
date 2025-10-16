@@ -1,42 +1,44 @@
 {
-	"name": "astra-app",
-	"version": "0.1.0",
-	"private": true,
-	"scripts": {
-		"dev": "next dev",
-		"build": "next build",
-		"start": "next start",
-		"lint": "biome check --fix src",
-		"type-check": "biome check",
-		"sync:agents": "bun run scripts/sync-agents.ts",
-		"set:memory-token": "bun run scripts/set-memory-token.ts",
-		"test": "bun --env-file=.env test",
-		"test:watch": "bun --env-file=.env test --watch",
-		"test:coverage": "bun --env-file=.env test --coverage"
-	},
-	"dependencies": {
-		"@elevenlabs/elevenlabs-js": "^2.18.0",
-		"@elevenlabs/react": "^0.8.0",
-		"@julep/sdk": "^2.7.4",
-		"better-auth": "^1.3.27",
-		"clsx": "^2.1.1",
-		"mongodb": "^6.8.0",
-		"next": "15.5.0",
-		"react": "^18",
-		"react-dom": "^18"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.2.5",
-		"@testing-library/react": "^16.3.0",
-		"@testing-library/react-hooks": "^8.0.1",
-		"@types/js-yaml": "^4.0.9",
-		"@types/node": "^20",
-		"@types/react": "^18",
-		"@types/react-dom": "^18",
-		"eslint": "^8",
-		"eslint-config-next": "14.2.13",
-		"happy-dom": "^20.0.2",
-		"js-yaml": "^4.1.0",
-		"typescript": "^5"
-	}
+  "name": "astra-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check --fix src",
+    "type-check": "biome check",
+    "sync:agents": "bun run scripts/sync-agents.ts",
+    "set:memory-token": "bun run scripts/set-memory-token.ts",
+    "setup:background-worker": "bun run scripts/setup-background-worker.ts",
+    "test": "bun --env-file=.env test",
+    "test:watch": "bun --env-file=.env test --watch",
+    "test:coverage": "bun --env-file=.env test --coverage"
+  },
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.18.0",
+    "@elevenlabs/react": "^0.8.0",
+    "@julep/sdk": "^2.7.4",
+    "better-auth": "^1.3.27",
+    "clsx": "^2.1.1",
+    "mongodb": "^6.8.0",
+    "next": "15.5.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.5",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/react-hooks": "^8.0.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.13",
+    "happy-dom": "^20.0.2",
+    "js-yaml": "^4.1.0",
+    "typescript": "^5"
+  }
 }

@@ -1,67 +1,12 @@
-import fs from "node:fs";
-import { Julep } from "@julep/sdk";
 import { NextResponse } from "next/server";
-import yaml from "yaml";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
+import { elevenLabsClient } from "@/lib/elevenlabs-api";
+import { getBackgroundWorkerAgentId, julepClient } from "@/lib/julep-client";
 import { logger } from "@/lib/logger";
 import { getElevenLabsConversations, getUsers } from "@/lib/mongo";
+import { loadTaskDefinition } from "@/lib/tasks/loader";
 
 const transcriptLogger = logger.child("api:tasks:transcript");
-
-const julepClient = new Julep({
-	apiKey: env.julepApiKey || "",
-	environment: "production",
-});
-
-/**
- * Fetch conversation transcript from ElevenLabs API
- */
-async function fetchTranscriptFromElevenLabs(
-	conversationId: string,
-): Promise<string | null> {
-	try {
-		const response = await fetch(
-			`https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
-			{
-				headers: {
-					Authorization: `Bearer ${env.elevenLabsApiKey}`,
-				},
-			},
-		);
-
-		if (!response.ok) {
-			transcriptLogger.error("Failed to fetch transcript from ElevenLabs", {
-				conversationId,
-				status: response.status,
-			});
-			return null;
-		}
-
-		const data = await response.json();
-
-		// Extract transcript text from messages
-		if (!data.transcript?.messages) {
-			transcriptLogger.warn("No transcript messages found", { conversationId });
-			return null;
-		}
-
-		const transcriptText = data.transcript.messages
-			.map(
-				(msg: { role: string; message: string }) =>
-					`${msg.role.toUpperCase()}: ${msg.message}`,
-			)
-			.join("\n\n");
-
-		return transcriptText;
-	} catch (error) {
-		transcriptLogger.error("Error fetching transcript", {
-			conversationId,
-			error: error instanceof Error ? error.message : String(error),
-		});
-		return null;
-	}
-}
 
 /**
  * POST /api/tasks/transcript
@@ -137,7 +82,8 @@ export async function POST(request: Request) {
 		});
 
 		// Fetch transcript from ElevenLabs
-		const transcriptText = await fetchTranscriptFromElevenLabs(conversation_id);
+		const transcriptText =
+			await elevenLabsClient.getTranscriptText(conversation_id);
 
 		if (!transcriptText) {
 			return NextResponse.json(
@@ -152,54 +98,38 @@ export async function POST(request: Request) {
 		});
 
 		// Load task definition
-		const taskYamlPath = "agents/tasks/transcript-processor-simple.yaml";
-		const taskYaml = fs.readFileSync(taskYamlPath, "utf8");
-		const taskDef = yaml.parse(taskYaml);
+		const taskDef = loadTaskDefinition("TRANSCRIPT_PROCESSOR");
 
-		// Create task
-		const task = await julepClient.tasks.create(
-			env.backgroundWorkerAgentId || env.astraAgentId || "",
+		// Get background worker agent ID
+		const agentId = getBackgroundWorkerAgentId();
+
+		// Execute task with polling
+		const result = await julepClient.createAndExecuteTask(
+			agentId,
 			taskDef,
-		);
-
-		transcriptLogger.info("Task created", { taskId: task.id });
-
-		// Execute task
-		const execution = await julepClient.executions.create(task.id, {
-			input: {
+			{
 				julep_user_id: user.julep_user_id,
 				conversation_id,
 				transcript_text: transcriptText,
 			},
-		});
+			{
+				maxAttempts: 60, // 2 minutes timeout
+				intervalMs: 2000,
+				onProgress: (status, attempt) => {
+					transcriptLogger.debug("Task execution progress", {
+						conversationId: conversation_id,
+						status,
+						attempt,
+					});
+				},
+			},
+		);
 
-		transcriptLogger.info("Task execution started", {
-			executionId: execution.id,
-		});
-
-		// Poll for completion
-		let result:
-			| Awaited<ReturnType<typeof julepClient.executions.get>>
-			| undefined;
-		let pollCount = 0;
-		const maxPolls = 60; // 2 minutes timeout
-
-		while (pollCount < maxPolls) {
-			result = await julepClient.executions.get(execution.id);
-
-			if (result.status === "succeeded" || result.status === "failed") {
-				break;
-			}
-
-			pollCount++;
-			await new Promise((resolve) => setTimeout(resolve, 2000));
-		}
-
-		if (!result || result.status !== "succeeded") {
+		if (result.status !== "succeeded") {
 			transcriptLogger.error("Task execution failed", {
-				executionId: execution.id,
-				status: result?.status,
-				error: result?.error,
+				executionId: result.id,
+				status: result.status,
+				error: result.error,
 			});
 
 			// Update conversation with error
@@ -212,7 +142,7 @@ export async function POST(request: Request) {
 						metadata: {
 							...conversation.metadata,
 							transcript_processed: false,
-							error: result?.error || "Task execution timeout",
+							error: result.error || "Task execution failed",
 						},
 					},
 				},
@@ -221,14 +151,14 @@ export async function POST(request: Request) {
 			return NextResponse.json(
 				{
 					error: "Task execution failed",
-					details: result?.error || "Timeout",
+					details: result.error || "Unknown error",
 				},
 				{ status: 500 },
 			);
 		}
 
 		transcriptLogger.info("Task execution succeeded", {
-			executionId: execution.id,
+			executionId: result.id,
 			output: result.output,
 		});
 
@@ -256,7 +186,7 @@ export async function POST(request: Request) {
 		// Build MongoDB update
 		const updates: Record<string, unknown> = {
 			"user_overview.last_updated": new Date(),
-			"user_overview.updated_by": execution.id,
+			"user_overview.updated_by": result.id,
 		};
 
 		// Update birth data if extracted
@@ -325,8 +255,8 @@ export async function POST(request: Request) {
 					metadata: {
 						...conversation.metadata,
 						transcript_processed: true,
-						task_id: task.id,
-						execution_id: execution.id,
+						task_id: result.task_id,
+						execution_id: result.id,
 					},
 				},
 			},
@@ -369,8 +299,8 @@ export async function POST(request: Request) {
 
 		return NextResponse.json({
 			success: true,
-			task_id: task.id,
-			execution_id: execution.id,
+			task_id: result.task_id,
+			execution_id: result.id,
 			conversation_id,
 			message: "Transcript processed and MongoDB updated successfully",
 			extracted: {
@@ -416,7 +346,7 @@ export async function GET(request: Request) {
 			);
 		}
 
-		const execution = await julepClient.executions.get(executionId);
+		const execution = await julepClient.getExecution(executionId);
 
 		return NextResponse.json({
 			execution_id: executionId,
