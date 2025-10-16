@@ -1,5 +1,5 @@
 import { MongoClient, type Collection, type Db, type ObjectId } from 'mongodb';
-import type { AstraUser, AstraSession, ResponderEvent, ResponderOutboxMessage } from '../../src/lib/mongo';
+import type { AstraUser, AstraSession, ElevenLabsConversation, IntegrationToken } from '../../src/lib/mongo';
 
 /**
  * MONGODB TEST UTILITIES
@@ -26,17 +26,17 @@ import type { AstraUser, AstraSession, ResponderEvent, ResponderOutboxMessage } 
  * - Analytics aggregation
  * - BUSINESS IMPACT: Sessions = core product offering
  * 
- * 📨 RESPONDER EVENTS (responder_events):
- * - All AI-user conversation logs
- * - Analytics for conversation quality
- * - Historical data for insights
- * - BUSINESS IMPACT: Quality metrics = user retention
- * 
- * 📤 RESPONDER OUTBOX (responder_outbox):
- * - Message processing queue
- * - Status tracking for message delivery
- * - Error handling and retry logic
- * - BUSINESS IMPACT: Message delivery = user experience
+ * 💬 ELEVENLABS CONVERSATIONS (elevenlabs_conversations):
+ * - Voice conversation sessions with ElevenLabs
+ * - Agent interactions and workflow tracking
+ * - Conversation metadata and analytics
+ * - BUSINESS IMPACT: Voice interactions = core product feature
+ *
+ * 🔑 INTEGRATION TOKENS (integration_tokens):
+ * - Per-user integration tokens (memory-store, elevenlabs)
+ * - Secure token storage with expiration
+ * - Access control for external services
+ * - BUSINESS IMPACT: Token management = security & functionality
  * 
  * 🚨 TEST ISOLATION STRATEGY:
  * ========================
@@ -153,12 +153,12 @@ export function getTestSessions(): Collection<AstraSession> {
 	return getTestDatabase().collection<AstraSession>('astra_sessions');
 }
 
-export function getTestResponderEvents(): Collection<ResponderEvent> {
-	return getTestDatabase().collection<ResponderEvent>('responder_events');
+export function getTestElevenLabsConversations(): Collection<ElevenLabsConversation> {
+	return getTestDatabase().collection<ElevenLabsConversation>('elevenlabs_conversations');
 }
 
-export function getTestResponderOutbox(): Collection<ResponderOutboxMessage> {
-	return getTestDatabase().collection<ResponderOutboxMessage>('responder_outbox');
+export function getTestIntegrationTokens(): Collection<IntegrationToken> {
+	return getTestDatabase().collection<IntegrationToken>('integration_tokens');
 }
 
 /**
@@ -194,29 +194,32 @@ export function createTestSession(overrides: Partial<AstraSession> = {}): AstraS
 }
 
 /**
- * Create a test responder event with valid default data
+ * Create a test ElevenLabs conversation with valid default data
  */
-export function createTestResponderEvent(overrides: Partial<ResponderEvent> = {}): ResponderEvent {
+export function createTestElevenLabsConversation(overrides: Partial<ElevenLabsConversation> = {}): ElevenLabsConversation {
 	return {
-		userId: createTestUser().id,
-		role: 'user',
-		content: 'Test message content',
-		createdAt: new Date(),
+		user_id: createTestUser().id,
+		conversation_id: `test_conv_${Date.now()}`,
+		agent_id: 'test_agent',
+		workflow_id: 'astra-responder',
+		started_at: new Date(),
+		updated_at: new Date(),
 		metadata: null,
 		...overrides,
 	};
 }
 
 /**
- * Create a test outbox message with valid default data
+ * Create a test integration token with valid default data
  */
-export function createTestOutboxMessage(overrides: Partial<ResponderOutboxMessage> = {}): ResponderOutboxMessage {
+export function createTestIntegrationToken(overrides: Partial<IntegrationToken> = {}): IntegrationToken {
 	return {
 		userId: createTestUser().id,
-		content: 'Test outbox message',
-		createdAt: new Date(),
-		status: 'pending',
+		integration: 'memory-store',
+		token: `test_token_${Date.now()}`,
 		metadata: null,
+		createdAt: new Date(),
+		updatedAt: new Date(),
 		...overrides,
 	};
 }
