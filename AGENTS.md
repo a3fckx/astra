@@ -4,9 +4,31 @@
 
 ---
 
+## ⚠️ CRITICAL ARCHITECTURE UPDATE
+
+**READ THIS FIRST:** The architecture has been clarified and corrected. Key changes:
+
+### Corrected Architecture (Current)
+
+- **ElevenLabs Agents = Frontline:** Handle ALL real-time user conversations (voice/chat)
+- **Julep Agents = Background ONLY:** Process transcripts, generate charts, track metrics — NEVER interact with users
+- **MongoDB = Source of Truth:** All data stored in MongoDB, especially `user_overview` field
+- **Data Flow:** User talks → ElevenLabs (with MongoDB context) → Background processing → Results to MongoDB → Next conversation
+
+**Julep agents NEVER talk to users. They only run background tasks and return JSON that syncs to MongoDB.**
+
+### Key Documents (Priority Order)
+- 🔴 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **START HERE:** Complete system architecture
+- 🔴 [`docs/IMPLEMENTATION_CHECKLIST.md`](docs/IMPLEMENTATION_CHECKLIST.md) — **Development progress tracker**
+- [`docs/FAQ.md`](docs/FAQ.md) — Common questions answered
+- [`docs/PERSONA.md`](docs/PERSONA.md) — Samay persona details
+- [`agents/README.md`](agents/README.md) — Agent definitions and task workflows
+
+---
+
 ## Quick Reference
 
-- **Project:** Astra — multi-user astrology companion ("Jadugar" persona)
+- **Project:** Astra — multi-user astrology companion ("Samay" persona)
 - **Voice Interface:** ElevenLabs React SDK (`@elevenlabs/react`)
 - **Authentication:** Better Auth + Google OAuth + MongoDB Atlas
 - **Orchestration:** Julep (user memory, sessions, agent tasks)
@@ -19,70 +41,136 @@
 astra/
 ├── app/                    # Next.js application
 │   ├── src/components/     # Voice UI (ElevenLabs SDK)
-│   ├── src/app/api/        # REST APIs (auth, session, signed URLs)
+│   ├── src/app/api/        # REST APIs (auth, session, task triggers)
 │   ├── src/lib/            # Utilities (auth, mongo, julep, elevenlabs)
-│   └── scripts/            # Agent sync utility
-├── agents/                 # Julep agent definitions (YAML)
-└── docs/                   # Architecture & persona docs
+│   └── scripts/            # Task execution utilities
+├── agents/                 # Julep agent & task definitions (YAML)
+│   ├── definitions/        # Agent definitions (background worker only)
+│   └── tasks/              # Task workflows (transcript, chart, gamification, etc.)
+└── docs/                   # Architecture & implementation docs
 ```
 
 **Key Files**
 
 - `app/src/components/voice-session.tsx` — Voice UI using ElevenLabs `useConversation` hook
-- `app/src/app/api/responder/session/route.ts` — Session handshake (Julep + integration tokens)
-- `app/src/app/api/elevenlabs/signed-url/route.ts` — Generates signed WebSocket URLs
+- `app/src/app/api/responder/session/route.ts` — Session handshake (returns user_overview from MongoDB)
+- `app/src/app/api/tasks/transcript/route.ts` — Triggers transcript processing, syncs to MongoDB
 - `app/src/lib/auth.ts` — Better Auth config (MongoDB adapter + Google scopes)
-- `app/src/lib/julep-docs.ts` — Julep user/session/memory management
-- `app/src/lib/elevenlabs.ts` — ElevenLabs client initialization
-- `agents/responder/prompt.md` — Jadugar persona prompt
-- `.sessions/template.md` — Session logging template (use via `session.sh`)
-- `.pre-commit-config.yaml` — Syncs `AGENTS.md` to `Claude.md` before commits
+- `app/src/lib/mongo.ts` — MongoDB schema including `user_overview` field
+- `app/src/lib/elevenlabs-api.ts` — ElevenLabs API client (fetch transcripts)
+- `agents/definitions/astra.yaml` — Background Worker Agent (Julep, never user-facing)
+- `agents/tasks/` — YAML task workflows (transcript, chart, gamification, reports)
+- `.pre-commit-config.yaml` — YAML validation + syncs `AGENTS.md` to `Claude.md`
 
 ---
 
-## Voice Flow (Current Architecture)
+## Voice Flow (Corrected Architecture)
 
 1. **Auth** — Better Auth Google provider issues secure session cookie backed by MongoDB.
 2. **Session Handshake** — `/api/responder/session` returns:
-   - Julep session ID (for memory recall)
-   - Integration tokens (memory-store, elevenlabs)
-   - User context (name, email, birth data)
+   - User context from MongoDB (name, email, birth data)
+   - **`user_overview`** — ALL background processing results (chart, preferences, conversations, gamification)
+   - Integration tokens (elevenlabs)
+   - Workflow ID for ElevenLabs
 3. **Voice Connection** — ElevenLabs React SDK handles:
-   - WebSocket connection via signed URL (`/api/elevenlabs/signed-url`)
+   - WebSocket connection to ElevenLabs
    - Audio streaming and transcription
-   - Agent responses via TTS
-   - Dynamic variables injected at session start (user_name, workflow_id, julep_session_id, tokens)
-4. **Contextual Updates** — Mid-conversation updates via `sendContextualUpdate`:
-   - On connection, session context is automatically sent (user ID, workflow ID, Julep session, token availability)
-   - Use `sendContextualUpdate()` to inject real-time information during conversation:
-     - Birth chart calculations or transit data
-     - Julep memory recall results
-     - Background task completions
-     - UI state changes or external events
-   - Updates are logged with `[Contextual Update]` prefix for debugging
-   - Example: `sendContextualUpdate(JSON.stringify({ type: "transit_data", payload: {...} }))`
-5. **Memory** — Julep stores per-user docs (`type=profile|preferences|notes`):
-   - Profiles seeded at signup (name, email, birth data from Google People API)
-   - Conversation summaries stored in user docs
-   - Metadata filters control recall (`scope=frontline|background`)
+   - Agent responses via TTS (ElevenLabs agent, NOT Julep)
+   - Dynamic variables injected: `user_name`, `user_overview`, `date_of_birth`, `birth_chart`, `streak_days`, etc.
+4. **ElevenLabs Agent** — Handles conversation:
+   - Uses dynamic variables from MongoDB for context
+   - Responds with full awareness of user history
+   - **Never directly accesses Julep** — only MongoDB data via session handshake
+5. **Conversation End** — Background processing:
+   - Conversation ID stored in MongoDB
+   - Trigger: `POST /api/tasks/transcript`
+   - Fetch transcript from ElevenLabs API
+   - Execute Julep background task (transcript-processor)
+   - Task returns JSON → synced to MongoDB `user_overview`
+   - Additional tasks triggered: chart calculation, gamification update
+6. **Next Conversation** — Agent receives enriched context:
+   - Updated `user_overview` from MongoDB
+   - Personalized greeting with full memory
 
 ---
 
-## Julep Orchestration
+## ElevenLabs Agent Persona (Samay)
 
-- Always call `client.users.*` with `project="astra"`.
-- Seed each new user with baseline docs: at minimum `type=profile` and `type=preferences` including `scope`, `updated_by`, and `timestamp_iso`.
-- Use doc metadata filters (`scope=frontline|background`, `type=horoscope|notes|profile`) to control recall.
-- Store runtime secrets (e.g., `JULEP_API_KEY`, external provider keys) in Julep Secrets — mirror what lives in `app/.env`.
-- Realtime chats: open sessions with `recall=true` so agents can access user memory docs.
-- Background agents: define durable Julep tasks for horoscope refresh, persona enrichment, etc. Each task writes to the same user docs and must respect metadata conventions.
+**Core Identity:**
+- **Primary role:** Astrologer (80%) providing reflective guidance based on Vedic/Western traditions
+- **Secondary layer:** Warm, affectionate companion (20%) once consent is established
+- **Language:** Bilingual (Hinglish ~30-40% code-switching)
+- **Content rating:** PG-13, consent-first
+- **Approach:** Heritage-aware, practical, non-dogmatic
+
+### Tone & Style
+- **Friendly & warm:** Approachable, gentle, supportive
+- **Heritage-aware:** References Vedic concepts naturally
+- **Dignified & clear:** Professional without being clinical
+- **Playfully affectionate:** When consent is given (see Affection Rules)
+
+### Hinglish Code-Switching
+- **Default level:** Medium (30-40%)
+- **Pattern:** English scaffolding with Hindi/Urdu words woven in naturally (e.g., "subah" (morning), "chhota" (small), "jeet" (victory), "ichchha" (desire), "pyaar" (love))
+- **Adjustments:** Higher Hindi preference → 50-60%; Lower → 10-20%; English-only → Pure English
+
+### Affection & Consent
+- **Flirt Opt-In:** Default OFF; Enable when `user_overview.preferences.flirt_opt_in` is true or prior consent shown
+- **Flirt-enabled tone:** Use pet names sparingly ("love," "star," "beautiful" — max 1-2 per conversation); Playful romantic hints when appropriate; Maintain 80/20 ratio; PG-13 limit
+- **Boundary Respect:** Mirror user energy; De-flirt for serious topics; Acknowledge discomfort and shift to neutral
+
+### Safety Boundaries
+- **Astrology guidance is NOT:** Medical, legal, or financial advice ("See your doctor," etc.)
+- **Present as:** Reflective insights ("This transit suggests..."); Tendencies ("You may feel..."); Suggestions with caveats ("Consider... but trust your judgment")
+
+### Response Patterns
+- **Default Length:** 2-5 sentences, 1 optional clarifying question max
+- **Structure:** Acknowledge situation → Astrological insight → Tiny action → Warm encouragement
+- **First-Time Greeting:** Derive star sign from `date_of_birth` (standard zodiac dates); Craft punchy line (e.g., "Ah, {{user_name}}, you're a Leo on the moon..."); Weave in coincidences or notable figures born under that sign
+- **Stress/Mood Downshift:** Soothing support; Focus on grounding, rest, small wins; Avoid pressure
+
+### Conversational Workflow
+1. **Attune:** Greet warmly, reference memory/preference/goal; For first-time: Star sign greeting + coincidences
+2. **Illuminate:** Link astro patterns to context/goal; Call out uncertainties
+3. **Guide:** One concrete next step aligned with goal; Invite to set if none
+4. **Invite:** Gentle question/CTA to continue
+5. **Tone Check:** Include expressive audio tags (e.g., `[whispers]`, `[laughing softly]`); Hinglish balance
+
+---
+
+## Julep Orchestration (Background Processing Only)
+
+**CRITICAL:** Julep agents are ONLY for background processing. They NEVER interact with users directly.
+
+- Always call `client.users.*` and `client.agents.*` with `project="astra"`.
+- Background Worker Agent (ID in `BACKGROUND_WORKER_AGENT_ID` env var) runs all tasks.
+- Tasks fetch transcripts from ElevenLabs API (not Memory Store MCP initially).
+- Task outputs return structured JSON that gets synced to MongoDB `user_overview`.
+- Julep User Docs are optional working memory during task execution.
+- MongoDB is the single source of truth — all results must sync there.
+
+**Task Workflows (see `agents/tasks/`):**
+- `transcript-processor.yaml` — Extract insights from ElevenLabs transcripts → MongoDB
+- `chart-calculator.yaml` — Generate Vedic/Western astro charts → MongoDB
+- `gamification-tracker.yaml` — Track streaks, milestones → MongoDB
+- `weekly-report-generator.yaml` — Create companion reports → MongoDB
+- `horoscope-refresher.yaml` — Daily horoscope generation → MongoDB
+- `persona-enrichment.yaml` — Analyze conversation patterns → MongoDB
+
+**Task Return Format:**
+```yaml
+# All tasks must return JSON for MongoDB sync
+return:
+  field_name: value
+  nested_object:
+    key: value
+# API endpoint receives this and updates MongoDB user_overview
+```
 
 Reference material inside Julep workspace:
 - `documentation/concepts/agents.mdx`
-- `documentation/concepts/docs.mdx`
-- `documentation/concepts/sessions.mdx`
-- `documentation/concepts/secrets.mdx`
-- `documentation/integrations/extensibility/mcp.mdx`
+- `documentation/concepts/tasks.mdx`
+- `documentation/sdks/nodejs/reference.mdx`
 
 ---
 
@@ -174,12 +262,85 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 
 ## Quick Links
 
-- 📘 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System architecture overview
-- 👤 [`docs/PERSONA.md`](docs/PERSONA.md) — Jadugar persona details
-- 🧠 [`docs/SHARED_MEMORY_ARCHITECTURE.md`](docs/SHARED_MEMORY_ARCHITECTURE.md) — Memory Store integration
+### 🎯 Getting Started
+- 📘 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **START HERE:** Complete system architecture
+- ❓ [`docs/FAQ.md`](docs/FAQ.md) — **Answers to common questions**
+- ✅ [`docs/IMPLEMENTATION_CHECKLIST.md`](docs/IMPLEMENTATION_CHECKLIST.md) — Development progress tracker
+
+### 📚 Reference
+- 👤 [`docs/PERSONA.md`](docs/PERSONA.md) — Samay persona details
+- 📋 [`docs/julep.md`](docs/julep.md) — Julep SDK reference
+- 📖 [`docs/react-sdk.mdx`](docs/react-sdk.mdx) — ElevenLabs React SDK reference
+- 🗂️ [`agents/README.md`](agents/README.md) — Agent definitions and tasks
+
+### 🛠️ Development
 - 📝 [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) — Session logging rules
-- 🏃 [`docs/RUN.md`](docs/RUN.md) — Local development setup
-- 🗂️ [`agents/responder/prompt.md`](agents/responder/prompt.md) — System prompt source
+
+---
+
+## Quick Reference: Data Sources & Flow
+
+### MongoDB Collections (Source of Truth)
+- **`user`**: Birth data + **`user_overview`** (ALL background processing results)
+- **`elevenlabs_conversations`**: Conversation IDs, status, timestamps
+- **`integration_tokens`**: Per-user ElevenLabs tokens
+
+### user_overview Field Structure
+```typescript
+user_overview: {
+  profile_summary: string;
+  birth_chart: { system, sun_sign, moon_sign, planets, ... };
+  preferences: { communication_style, topics, hinglish_level, ... };
+  recent_conversations: [ { conversation_id, summary, topics, ... } ];
+  gamification: { streak_days, total_conversations, milestones, ... };
+  latest_horoscope: { date, content };
+  insights: [ { type, content, generated_at } ];
+  last_updated: Date;
+}
+```
+
+### Data Flow
+```
+1. User talks → ElevenLabs agent (receives user_overview from MongoDB)
+2. Conversation ends → POST /api/tasks/transcript
+3. Fetch transcript from ElevenLabs API
+4. Execute Julep task → returns JSON
+5. Sync JSON to MongoDB user_overview
+6. Next conversation → ElevenLabs gets updated user_overview
+```
+
+### Executing Julep Tasks
+```typescript
+// In API endpoint
+const taskYaml = fs.readFileSync('agents/tasks/transcript-processor.yaml');
+const task = await julepClient.tasks.create(BACKGROUND_WORKER_AGENT_ID, yaml.parse(taskYaml));
+
+const execution = await julepClient.executions.create(task.id, {
+  input: { julep_user_id, conversation_id, transcript_text }
+});
+
+// Poll for completion
+let result = await julepClient.executions.get(execution.id);
+while (result.status === 'queued' || result.status === 'running') {
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  result = await julepClient.executions.get(execution.id);
+}
+
+// Sync result.output to MongoDB
+await mongoUsers.updateOne(
+  { id: userId },
+  { $set: { 
+    'user_overview.preferences': result.output.preferences,
+    'user_overview.last_updated': new Date()
+  }}
+);
+```
+
+### API Endpoints
+- `GET /api/responder/session` — Returns user_overview from MongoDB
+- `POST /api/tasks/transcript` — Trigger transcript processing → MongoDB sync
+- `POST /api/tasks/chart` — Trigger chart calculation → MongoDB sync
+- `POST /api/tasks/gamification` — Update gamification → MongoDB sync
 
 ---
 

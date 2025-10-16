@@ -321,21 +321,21 @@ export function createMockUseConversation() {
 ## ✅ Best Practices
 
 ### DO
-✅ Group tests by domain/feature  
-✅ Use descriptive test names explaining business impact  
-✅ Import from centralized index files  
-✅ Clean up resources in `afterEach`/`afterAll`  
-✅ Document why a test exists (business context)  
-✅ Keep tests focused and isolated  
-✅ Use type-safe mocks  
+✅ Group tests by domain/feature
+✅ Use descriptive test names explaining business impact
+✅ Import from centralized index files
+✅ Clean up resources in `afterEach`/`afterAll`
+✅ Document why a test exists (business context)
+✅ Keep tests focused and isolated
+✅ Use type-safe mocks
 
 ### DON'T
-❌ Mix unit and integration tests in the same file  
-❌ Create deep nested test directories (max 2 levels)  
-❌ Import directly from mock files (use index)  
-❌ Share mutable state between tests  
-❌ Test implementation details  
-❌ Leave commented-out tests  
+❌ Mix unit and integration tests in the same file
+❌ Create deep nested test directories (max 2 levels)
+❌ Import directly from mock files (use index)
+❌ Share mutable state between tests
+❌ Test implementation details
+❌ Leave commented-out tests
 
 ---
 
@@ -612,6 +612,6 @@ Before deploying changes:
 
 **Remember**: Every test failure represents a potential user experience issue and possible business impact. Prioritize fixes based on business criticality and user impact.
 
-**Last Updated**: 2025-01-16  
-**Maintainer**: Engineering Team  
+**Last Updated**: 2025-10-17
+**Maintainer**: Engineering Team
 **Version**: 2.0.0

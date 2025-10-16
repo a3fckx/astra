@@ -7,6 +7,12 @@ repos:
         language: system
         files: ^AGENTS\\.md$
         pass_filenames: false
+      - id: validate-yaml
+        name: Validate YAML files
+        entry: bash -c 'cd app && bun x js-yaml'
+        language: system
+        files: ^agents/.*\\.yaml$
+        pass_filenames: true
       - id: run-tests
         name: Run Tests with Bun
         entry: bash -c 'cd app && bun test --timeout=5000'

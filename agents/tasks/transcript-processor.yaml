@@ -1,0 +1,283 @@
+name: Process Conversation Transcript
+description: Fetch transcript from Memory Store MCP, extract insights, and update user docs
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - julep_user_id
+    - conversation_id
+  properties:
+    julep_user_id:
+      type: string
+      description: The Julep user ID
+    conversation_id:
+      type: string
+      description: ElevenLabs conversation ID
+    memory_store_token:
+      type: string
+      description: Memory Store MCP authentication token (from integration_tokens)
+
+tools:
+  # Memory Store MCP Integration
+  - name: mcp_discover
+    description: Discover available Memory Store MCP tools
+    type: integration
+    integration:
+      provider: mcp
+      method: list_tools
+      setup:
+        transport: command
+        command: npx
+        args:
+          - mcp-remote
+          - $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
+
+  - name: mcp_execute
+    description: Execute Memory Store MCP tools
+    type: integration
+    integration:
+      provider: mcp
+      method: call_tool
+      setup:
+        transport: command
+        command: npx
+        args:
+          - mcp-remote
+          - $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
+
+  # Julep System Tools
+  - name: search_user_profile
+    description: Search user profile documents
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: create_user_doc
+    description: Create new user document
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: create
+
+  - name: search_preferences
+    description: Search user preferences
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+main:
+  # Step 1: Discover Memory Store capabilities
+  - tool: mcp_discover
+    arguments: {}
+
+  # Step 2: Fetch conversation transcript from Memory Store
+  - tool: mcp_execute
+    arguments:
+      tool_name: recall
+      arguments:
+        cues:
+          - $ _.conversation_id
+          - "conversation transcript"
+        background: $ f"Retrieving transcript for conversation {_.conversation_id}"
+        k: 20
+
+  # Step 3: Extract structured insights from transcript
+  - prompt: |-
+      You are analyzing a conversation transcript to extract structured information.
+
+      **Transcript Content:**
+      {transcript}
+
+      Analyze and extract the following in JSON format:
+
+      {{
+        "birth_details": {{
+          "date": "YYYY-MM-DD or null",
+          "time": "HH:mm or null",
+          "location": "City, Country or null",
+          "timezone": "IANA timezone or null"
+        }},
+        "preferences": {{
+          "topics_discussed": ["topic1", "topic2"],
+          "communication_style": "casual | formal | mixed",
+          "hinglish_usage": "low | medium | high",
+          "emotional_tone": "curious | anxious | excited | reflective",
+          "preferred_response_length": "concise | moderate | detailed"
+        }},
+        "key_insights": [
+          "Insight 1",
+          "Insight 2"
+        ],
+        "questions_asked": [
+          "Question 1",
+          "Question 2"
+        ],
+        "astrology_system_preference": "vedic | western | both | not_mentioned",
+        "consent_flags": {{
+          "pet_names_ok": true | false | null,
+          "weekly_reports_ok": true | false | null
+        }}
+      }}
+
+      Only include information that was explicitly mentioned in the conversation.
+      Use null for missing values. Be precise and factual.
+
+      transcript = {steps[1].output.text or steps[1].output.structured or "No transcript retrieved"}
+    unwrap: true
+
+  # Step 4: Parse extracted insights
+  - evaluate:
+      insights: $ json.loads(steps[2].output)
+
+  # Step 5: Get existing user profile
+  - tool: search_user_profile
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "profile"
+      metadata_filter:
+        type: "profile"
+        scope: "frontline"
+      limit: 1
+
+  # Step 6: Update profile if new birth data discovered
+  - if: $ _.insights.birth_details.date is not None or _.insights.birth_details.time is not None
+    then:
+      - evaluate:
+          existing_profile: $ steps[4].output.docs[0] if len(steps[4].output.docs) > 0 else None
+          version: $ (steps[4].output.docs[0].metadata.version if steps[4].output.docs[0].metadata.version else 0) + 1 if len(steps[4].output.docs) > 0 else 1
+
+      - evaluate:
+          profile_content_parts: []
+
+      # Build profile content preserving existing info
+      - if: $ _.existing_profile is not None
+        then:
+          - evaluate:
+              profile_content_parts: $ _.existing_profile.content
+        else:
+          - continue: null
+
+      # Add new birth details
+      - evaluate:
+          birth_update: $ [
+            f"Date of Birth: {_.insights.birth_details.date}" if _.insights.birth_details.date else None,
+            f"Birth Time: {_.insights.birth_details.time}" if _.insights.birth_details.time else None,
+            f"Birth Location: {_.insights.birth_details.location}" if _.insights.birth_details.location else None,
+            f"Timezone: {_.insights.birth_details.timezone}" if _.insights.birth_details.timezone else None
+          ]
+
+      - evaluate:
+          new_birth_info: $ "\n".join([item for item in _.birth_update if item is not None])
+
+      - tool: create_user_doc
+        arguments:
+          user_id: $ _.julep_user_id
+          title: "User Profile (Enriched from Conversation)"
+          content:
+            - $ "\n\n".join(_.profile_content_parts + [f"[Updated from conversation {_.conversation_id}]", _.new_birth_info])
+          metadata:
+            type: "profile"
+            scope: "frontline"
+            shared: true
+            updated_by: $ _.current_task_id or "transcript-processor"
+            timestamp_iso: $ datetime.now().isoformat()
+            source: "transcript"
+            conversation_id: $ _.conversation_id
+            version: $ _.version
+    else:
+      - continue: null
+
+  # Step 7: Get existing preferences
+  - tool: search_preferences
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "preferences"
+      metadata_filter:
+        type: "preferences"
+        scope: "frontline"
+      limit: 1
+
+  # Step 8: Update preferences if new patterns discovered
+  - if: $ len(_.insights.preferences.topics_discussed) > 0
+    then:
+      - evaluate:
+          existing_prefs: $ steps[6].output.docs[0] if len(steps[6].output.docs) > 0 else None
+          pref_version: $ (steps[6].output.docs[0].metadata.version if steps[6].output.docs[0].metadata.version else 0) + 1 if len(steps[6].output.docs) > 0 else 1
+
+      - evaluate:
+          preferences_text: $ f"""
+Communication Style: {_.insights.preferences.communication_style}
+Hinglish Usage: {_.insights.preferences.hinglish_usage}
+Emotional Tone: {_.insights.preferences.emotional_tone}
+Preferred Response Length: {_.insights.preferences.preferred_response_length}
+Topics Discussed: {', '.join(_.insights.preferences.topics_discussed)}
+Astrology System: {_.insights.astrology_system_preference}
+"""
+
+      - tool: create_user_doc
+        arguments:
+          user_id: $ _.julep_user_id
+          title: "User Preferences (Updated)"
+          content:
+            - $ _.preferences_text
+          metadata:
+            type: "preferences"
+            scope: "frontline"
+            shared: true
+            updated_by: $ _.current_task_id or "transcript-processor"
+            timestamp_iso: $ datetime.now().isoformat()
+            source: "transcript"
+            conversation_id: $ _.conversation_id
+            version: $ _.pref_version
+            topics: $ _.insights.preferences.topics_discussed
+            astrology_system: $ _.insights.astrology_system_preference
+    else:
+      - continue: null
+
+  # Step 9: Write conversation summary notes
+  - evaluate:
+      summary_content: $ f"""
+**Conversation on {datetime.now().strftime('%B %d, %Y at %H:%M')}**
+
+**Topics Discussed:** {', '.join(_.insights.preferences.topics_discussed) if len(_.insights.preferences.topics_discussed) > 0 else 'General conversation'}
+
+**Key Insights:**
+{chr(10).join(['- ' + insight for insight in _.insights.key_insights])}
+
+**Questions Asked by User:**
+{chr(10).join(['- ' + q for q in _.insights.questions_asked]) if len(_.insights.questions_asked) > 0 else 'No specific questions'}
+
+**Emotional Tone:** {_.insights.preferences.emotional_tone}
+"""
+
+  - tool: create_user_doc
+    arguments:
+      user_id: $ _.julep_user_id
+      title: $ f"Conversation Summary - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+      content:
+        - $ _.summary_content
+      metadata:
+        type: "notes"
+        scope: "frontline"
+        shared: true
+        updated_by: $ _.current_task_id or "transcript-processor"
+        timestamp_iso: $ datetime.now().isoformat()
+        source: "transcript"
+        conversation_id: $ _.conversation_id
+        topics: $ _.insights.preferences.topics_discussed
+
+  # Step 10: Return processing summary
+  - return:
+      success: true
+      conversation_id: $ _.conversation_id
+      birth_data_updated: $ _.insights.birth_details.date is not None or _.insights.birth_details.time is not None
+      preferences_updated: $ len(_.insights.preferences.topics_discussed) > 0
+      insights_count: $ len(_.insights.key_insights)
+      questions_count: $ len(_.insights.questions_asked)
+      notes_created: true
