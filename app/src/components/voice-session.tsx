@@ -318,7 +318,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		}
 		/**
 		 * ANCHOR:dynamic-session-variables
-		 * These fields must stay aligned with docs/responder.md. Only expose data we can
+		 * These fields must stay aligned with app/docs/responder.md. Only expose data we can
 		 * safely inject into ElevenLabs dynamic variables for every turn.
 		 */
 		return sanitizeDynamicVariables({
@@ -337,7 +337,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		/**
 		 * ANCHOR:elevenlabs-prompt-template
 		 * We load the Markdown template server-side and inject it here so the SDK override
-		 * stays in sync with docs/responder.md. When the template updates, no client code change is needed.
+		 * stays in sync with app/docs/responder.md. When the template updates, no client code change is needed.
 		 */
 		const prompt = handshake?.prompt;
 		if (!prompt) {

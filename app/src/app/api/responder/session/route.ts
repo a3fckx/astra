@@ -110,7 +110,7 @@ export async function GET(request: Request) {
 	}
 
 	// ANCHOR:prompt-template-source
-	// ElevenLabs prompt lives in docs/responder.md; keep this loader aligned with the template.
+	// ElevenLabs prompt lives in app/docs/responder.md; keep this loader aligned with the template.
 	let responderPrompt: string | null = null;
 	try {
 		responderPrompt = await getResponderPromptTemplate();
