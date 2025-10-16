@@ -188,3 +188,4 @@ describe('Environment Variable Configuration', () => {
 		});
 	});
 });
+// Test comment for pre-commit hook validation
