@@ -1,5 +1,7 @@
 # Astra — Astrology Companion
 
+
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/a3fckx/astra?utm_source=oss&utm_medium=github&utm_campaign=a3fckx%2Fastra&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 Astra delivers a multi-user astrology assistant (“Jadugar”) with Google sign-in, Mongo-backed persistence, and Julep-managed agent workflows. The stack is now 100% Next.js — legacy Python services have been retired.
 
 ---
