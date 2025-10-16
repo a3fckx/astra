@@ -2,6 +2,8 @@ import { logger } from "@/lib/logger";
 
 const envLogger = logger.child("env");
 
+export const DEFAULT_ELEVENLABS_AGENT_ID = "agent_9501k3xm7f8bfvysgym9sd8e1fdb";
+
 const boolFromEnv = (value: string | undefined, fallback: boolean): boolean => {
 	if (value === undefined) {
 		return fallback;
@@ -71,12 +73,8 @@ export const env = {
 		false,
 	),
 	googlePromptRaw: process.env.GOOGLE_OAUTH_PROMPT ?? "select_account consent",
-	elevenLabsAgentId: required(
-		"ELEVENLABS_AGENT_ID",
-		process.env.ELEVENLABS_AGENT_ID,
-	),
-	memoryStoreMcpServerId:
-		process.env.MEMORY_STORE_MCP_SERVER_ID?.trim() ?? null,
+	elevenLabsAgentId:
+		process.env.ELEVENLABS_AGENT_ID?.trim() || DEFAULT_ELEVENLABS_AGENT_ID,
 };
 
 const BASE_SCOPES = [
@@ -121,6 +119,12 @@ const resolvedGooglePrompt = GOOGLE_PROMPT_VALUES.has(env.googlePromptRaw)
 if (!resolvedGooglePrompt) {
 	envLogger.warn(
 		`GOOGLE_OAUTH_PROMPT value "${env.googlePromptRaw}" is not recognized. Falling back to provider default.`,
+	);
+}
+
+if (!process.env.ELEVENLABS_AGENT_ID) {
+	envLogger.info(
+		`ELEVENLABS_AGENT_ID not set. Falling back to default agent ${DEFAULT_ELEVENLABS_AGENT_ID}.`,
 	);
 }
 
