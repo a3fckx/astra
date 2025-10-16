@@ -8,6 +8,7 @@ import { julepEnv } from "@/lib/julep";
 import { getOrCreateJulepSession } from "@/lib/julep-docs";
 import { logger } from "@/lib/logger";
 import { getUsers, type IntegrationToken } from "@/lib/mongo";
+import { getResponderPromptTemplate } from "@/lib/prompt-loader";
 
 const routeLogger = logger.child("responder-session-route");
 const KNOWN_INTEGRATIONS: IntegrationName[] = ["memory-store", "elevenlabs"];
@@ -108,6 +109,17 @@ export async function GET(request: Request) {
 		}
 	}
 
+	// ANCHOR:prompt-template-source
+	// ElevenLabs prompt lives in docs/responder.md; keep this loader aligned with the template.
+	let responderPrompt: string | null = null;
+	try {
+		responderPrompt = await getResponderPromptTemplate();
+	} catch (error) {
+		routeLogger.error("Failed to load responder prompt template", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+
 	return NextResponse.json({
 		session: {
 			workflowId: requestedWorkflow,
@@ -119,8 +131,14 @@ export async function GET(request: Request) {
 				id: user.id,
 				email: user.email,
 				name: user.name,
+				dateOfBirth: user.date_of_birth
+					? user.date_of_birth.toISOString().split("T")[0]
+					: null,
+				birthTime: user.birth_time ?? null,
+				birthPlace: user.birth_location ?? null,
 			},
 		},
 		integrations,
+		prompt: responderPrompt,
 	});
 }

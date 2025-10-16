@@ -4,6 +4,12 @@ import { getSessions } from "@/lib/mongo";
 
 const docsLogger = logger.child("julep-docs");
 
+const DOC_LIST_PARAMS = {
+	sort_by: "updated_at",
+	direction: "desc",
+	limit: 1,
+} as const;
+
 export async function createJulepUser(userData: {
 	name: string;
 	email: string;
@@ -186,4 +192,46 @@ export async function getOrCreateJulepSession(
 	});
 
 	return session.id;
+}
+
+type DocListMetadataFilter = Partial<
+	Pick<JulepDocMetadata, "type" | "scope" | "shared" | "updated_by">
+>;
+
+export async function getLatestDocContent(
+	julepUserId: string,
+	metadataFilter: DocListMetadataFilter,
+): Promise<string | null> {
+	try {
+		const page = await julepClient.users.docs.list(julepUserId, {
+			metadata_filter: metadataFilter,
+			...DOC_LIST_PARAMS,
+		});
+
+		const doc = (page as unknown as { items?: Array<{ content?: unknown }> })
+			.items?.[0];
+
+		if (!doc || typeof doc !== "object") {
+			return null;
+		}
+
+		const { content } = doc as { content?: unknown };
+
+		if (Array.isArray(content)) {
+			return content.join("\n\n");
+		}
+
+		if (typeof content === "string") {
+			return content;
+		}
+
+		return null;
+	} catch (error) {
+		docsLogger.error("Failed to load latest doc content", {
+			julepUserId,
+			metadataFilter,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return null;
+	}
 }

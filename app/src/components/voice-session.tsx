@@ -17,25 +17,6 @@ type IntegrationResponse = {
 	metadata: Record<string, unknown> | null;
 } | null;
 
-type SessionHandshake = {
-	session: {
-		workflowId?: string;
-		julep?: {
-			sessionId?: string;
-			userId?: string;
-		};
-		user: {
-			id: string;
-			email: string;
-			name?: string;
-		};
-	};
-	integrations: {
-		"memory-store": IntegrationResponse;
-		elevenlabs: IntegrationResponse;
-	};
-};
-
 const USER_ACTIVITY_INTERVAL_MS = 15000;
 const MICROPHONE_WARNING =
 	"Microphone access is required for voice conversation. Please allow access and retry.";
@@ -67,6 +48,29 @@ const sanitizeDynamicVariables = (
 	return entries.length
 		? (Object.fromEntries(entries) as Record<string, string | number | boolean>)
 		: undefined;
+};
+
+type SessionHandshake = {
+	session: {
+		workflowId?: string;
+		julep?: {
+			sessionId?: string;
+			userId?: string;
+		};
+		user: {
+			id: string;
+			email: string;
+			name?: string;
+			dateOfBirth?: string | null;
+			birthTime?: string | null;
+			birthPlace?: string | null;
+		};
+	};
+	integrations: {
+		"memory-store": IntegrationResponse;
+		elevenlabs: IntegrationResponse;
+	};
+	prompt?: string | null;
 };
 
 export function VoiceSession({ agentId }: VoiceSessionProps) {
@@ -269,6 +273,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 				const payload = (await response.json()) as {
 					session?: SessionHandshake["session"];
 					integrations?: Partial<SessionHandshake["integrations"]>;
+					prompt?: SessionHandshake["prompt"];
 				};
 
 				if (!payload.session?.user?.id || !payload.session.user.email) {
@@ -281,6 +286,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 						"memory-store": payload.integrations?.["memory-store"] ?? null,
 						elevenlabs: payload.integrations?.elevenlabs ?? null,
 					},
+					prompt: payload.prompt ?? null,
 				});
 				setWarning(null);
 			} catch (handshakeError) {
@@ -310,14 +316,36 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		if (!handshake) {
 			return undefined;
 		}
+		/**
+		 * ANCHOR:dynamic-session-variables
+		 * These fields must stay aligned with docs/responder.md. Only expose data we can
+		 * safely inject into ElevenLabs dynamic variables for every turn.
+		 */
 		return sanitizeDynamicVariables({
 			user_name: userDisplayName,
 			workflow_id: handshake.session.workflowId ?? WORKFLOW_ID,
 			julep_session_id: handshake.session.julep?.sessionId,
 			memory_store_token: handshake.integrations["memory-store"]?.token ?? null,
 			elevenlabs_user_token: handshake.integrations.elevenlabs?.token ?? null,
+			date_of_birth: handshake.session.user.dateOfBirth ?? null,
+			birth_time: handshake.session.user.birthTime ?? null,
+			birth_place: handshake.session.user.birthPlace ?? null,
 		});
 	}, [handshake, userDisplayName]);
+
+	const agentPrompt = useMemo(() => {
+		/**
+		 * ANCHOR:elevenlabs-prompt-template
+		 * We load the Markdown template server-side and inject it here so the SDK override
+		 * stays in sync with docs/responder.md. When the template updates, no client code change is needed.
+		 */
+		const prompt = handshake?.prompt;
+		if (!prompt) {
+			return null;
+		}
+		const trimmed = prompt.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}, [handshake?.prompt]);
 
 	const requestMicrophoneAccess = useCallback(async () => {
 		if (
@@ -409,6 +437,15 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 				userId: handshake.session.user.id,
 				dynamicVariables,
 				textOnly: false,
+				overrides: agentPrompt
+					? {
+							agent: {
+								prompt: {
+									prompt: agentPrompt,
+								},
+							},
+						}
+					: undefined,
 			});
 			console.info("[ElevenLabs] Conversation started", conversationId);
 
@@ -440,6 +477,7 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		}
 	}, [
 		agentId,
+		agentPrompt,
 		dynamicVariables,
 		handshake,
 		handshakeLoaded,
