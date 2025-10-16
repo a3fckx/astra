@@ -237,6 +237,11 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 		},
 	});
 
+	const endSessionRef = useRef(endSession);
+	useEffect(() => {
+		endSessionRef.current = endSession;
+	}, [endSession]);
+
 	useEffect(() => {
 		return () => {
 			sessionActiveRef.current = false;
@@ -245,9 +250,9 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 				clearInterval(activityIntervalRef.current);
 				activityIntervalRef.current = null;
 			}
-			void endSession();
+			void endSessionRef.current();
 		};
-	}, [endSession]);
+	}, []);
 
 	useEffect(() => {
 		const loadHandshake = async () => {
