@@ -35,11 +35,8 @@ tools:
       provider: mcp
       method: list_tools
       setup:
-        transport: command
-        command: npx
-        args:
-          - mcp-remote
-          - $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
+        transport: http
+        http_url: $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
 
   - name: mcp_execute
     description: Execute Memory Store MCP tools
@@ -48,11 +45,8 @@ tools:
       provider: mcp
       method: call_tool
       setup:
-        transport: command
-        command: npx
-        args:
-          - mcp-remote
-          - $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
+        transport: http
+        http_url: $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
 
 main:
   # Prep context for the LLM prompt
