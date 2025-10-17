@@ -11,6 +11,7 @@ const taskLogger = logger.child("tasks:loader");
 export const TASK_DEFINITIONS = {
 	TRANSCRIPT_PROCESSOR: "transcript-processor.yaml",
 	CHART_CALCULATOR: "chart-calculator.yaml",
+	FAMOUS_PEOPLE_FINDER: "famous-people-finder.yaml",
 	GAMIFICATION_TRACKER: "gamification-tracker.yaml",
 	WEEKLY_REPORT: "weekly-report-generator.yaml",
 	HOROSCOPE_REFRESHER: "horoscope-refresher.yaml",
