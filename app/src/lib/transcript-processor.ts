@@ -518,6 +518,73 @@ export async function processTranscriptConversation({
 			: 0,
 	});
 
+	// ANCHOR:trigger-chart-calculation
+	// If we now have complete birth data, trigger chart calculation (fire-and-forget)
+	// This will generate Vedic/Western charts and find famous people born on same date
+	const hasCompleteBirthData =
+		user.date_of_birth && 
+		user.birth_time && 
+		(birthCity || user.birth_city) &&
+		!user.user_overview?.birth_chart;
+
+	if (hasCompleteBirthData) {
+		transcriptLogger.info("Triggering chart calculation", {
+			userId: user.id,
+			birthDate: user.date_of_birth?.toISOString().split("T")[0],
+			hasBirthTime: true,
+		});
+
+		// Fire-and-forget - don't await to avoid blocking transcript processing
+		const chartTaskDef = loadTaskDefinition("CHART_CALCULATOR");
+		julepClient
+			.createAndExecuteTask(
+				agentId,
+				chartTaskDef,
+				{
+					julep_user_id: user.julep_user_id,
+					birth_date: user.date_of_birth?.toISOString().split("T")[0],
+					birth_time: user.birth_time,
+					birth_location: birthCity || user.birth_city || "Unknown",
+					birth_timezone: derivedTimezone || user.birth_timezone || "UTC",
+					ayanamsha: "lahiri",
+				},
+				{
+					maxAttempts: 30,
+					intervalMs: 2000,
+				},
+			)
+			.then(async (chartResult) => {
+				if (chartResult.status === "succeeded") {
+					transcriptLogger.info("Chart calculation succeeded", {
+						userId: user.id,
+						taskId: chartResult.task_id,
+					});
+
+					// Update user with birth chart
+					await users.updateOne(
+						{ id: user.id },
+						{
+							$set: {
+								"user_overview.birth_chart": chartResult.output.birth_chart,
+								"user_overview.last_updated": new Date(),
+							},
+						},
+					);
+				} else {
+					transcriptLogger.error("Chart calculation failed", {
+						userId: user.id,
+						error: chartResult.error,
+					});
+				}
+			})
+			.catch((error) => {
+				transcriptLogger.error("Chart calculation error", {
+					userId: user.id,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+	}
+
 	return {
 		task_id: result.task_id,
 		execution_id: result.id,

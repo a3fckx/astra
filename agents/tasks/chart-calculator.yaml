@@ -1,14 +1,17 @@
 name: Calculate Astrology Birth Chart
-description: Generate comprehensive Vedic and Western astrology charts with detailed planetary analysis
-project: astra
+description: Generate comprehensive Vedic and Western astrology charts from birth data
 
 input_schema:
   type: object
   required:
+    - julep_user_id
     - birth_date
     - birth_time
     - birth_location
   properties:
+    julep_user_id:
+      type: string
+      description: Julep user ID for tracking
     birth_date:
       type: string
       description: Date of birth in YYYY-MM-DD format
@@ -20,224 +23,97 @@ input_schema:
       description: Birth location as "City, Country"
     birth_timezone:
       type: string
-      description: IANA timezone (e.g., "Asia/Kolkata", "America/New_York")
+      description: IANA timezone (e.g., "Asia/Kolkata")
+      default: "UTC"
     ayanamsha:
       type: string
-      enum:
-        - lahiri
-        - raman
-        - krishnamurti
-        - yukteshwar
-      default: lahiri
-      description: Ayanamsha to use for Vedic calculations
+      default: "lahiri"
+      description: Ayanamsha for Vedic calculations
 
 main:
-  # Step 1: Validate birth data
+  # Prepare input context
   - evaluate:
-      has_complete_data: $ all([_.birth_date, _.birth_time, _.birth_location])
+      birth_context: $ f"{steps[0].input.birth_date} at {steps[0].input.birth_time} in {steps[0].input.birth_location} ({steps[0].input.birth_timezone or 'UTC'})"
 
-  - if: $ not _.has_complete_data
-    then:
-      - return:
-          success: false
-          error: "Incomplete birth data"
-          message: "Cannot calculate chart without complete birth data (date, time, location)"
-    else:
-      - continue: null
-
-  # Step 2: Generate comprehensive Vedic chart
+  # Generate Vedic chart
   - prompt: |-
-      You are a highly advanced Vedic astrologer with deep expertise in Jyotish shastra. You understand planetary movements, nakshatras, house systems, yogas, dashas, and the intricate mathematics of sidereal calculations.
-
-      BIRTH DETAILS:
-      Date: {birth_date}
-      Time: {birth_time}
-      Location: {birth_location}
-      Timezone: {birth_timezone or "UTC"}
-      Ayanamsha: {ayanamsha}
-
-      TASK: Calculate a complete Vedic (sidereal) birth chart using {ayanamsha} ayanamsha. Use precise astronomical calculations for planetary positions.
-
-      Return ONLY valid JSON with this EXACT structure:
-      {{
-        "system": "vedic",
-        "sun_sign": "Taurus",
-        "moon_sign": "Scorpio",
-        "ascendant": "Virgo",
-        "planets": [
-          {{"name": "Sun", "sign": "Taurus", "house": 9, "degree": "24°32'", "nakshatra": "Mrigashira", "pada": 2, "retrograde": false}},
-          {{"name": "Moon", "sign": "Scorpio", "house": 3, "degree": "15°48'", "nakshatra": "Anuradha", "pada": 4, "retrograde": false}},
-          {{"name": "Mars", "sign": "Capricorn", "house": 5, "degree": "10°22'", "nakshatra": "Shravana", "pada": 1, "retrograde": false}},
-          {{"name": "Mercury", "sign": "Aries", "house": 8, "degree": "28°15'", "nakshatra": "Krittika", "pada": 1, "retrograde": false}},
-          {{"name": "Jupiter", "sign": "Cancer", "house": 11, "degree": "8°40'", "nakshatra": "Pushya", "pada": 3, "retrograde": false}},
-          {{"name": "Venus", "sign": "Gemini", "house": 10, "degree": "22°10'", "nakshatra": "Punarvasu", "pada": 2, "retrograde": false}},
-          {{"name": "Saturn", "sign": "Libra", "house": 2, "degree": "18°25'", "nakshatra": "Swati", "pada": 4, "retrograde": false}},
-          {{"name": "Rahu", "sign": "Aries", "house": 8, "degree": "12°30'", "nakshatra": "Bharani", "pada": 3, "retrograde": true}},
-          {{"name": "Ketu", "sign": "Libra", "house": 2, "degree": "12°30'", "nakshatra": "Swati", "pada": 2, "retrograde": true}}
-        ],
-        "house_lords": [
-          {{"house": 1, "lord": "Mercury", "sign_placement": "Aries", "house_placement": 8}},
-          {{"house": 2, "lord": "Venus", "sign_placement": "Gemini", "house_placement": 10}},
-          {{"house": 3, "lord": "Mars", "sign_placement": "Capricorn", "house_placement": 5}},
-          {{"house": 4, "lord": "Jupiter", "sign_placement": "Cancer", "house_placement": 11}},
-          {{"house": 5, "lord": "Saturn", "sign_placement": "Libra", "house_placement": 2}},
-          {{"house": 6, "lord": "Saturn", "sign_placement": "Libra", "house_placement": 2}},
-          {{"house": 7, "lord": "Jupiter", "sign_placement": "Cancer", "house_placement": 11}},
-          {{"house": 8, "lord": "Mars", "sign_placement": "Capricorn", "house_placement": 5}},
-          {{"house": 9, "lord": "Venus", "sign_placement": "Gemini", "house_placement": 10}},
-          {{"house": 10, "lord": "Mercury", "sign_placement": "Aries", "house_placement": 8}},
-          {{"house": 11, "lord": "Moon", "sign_placement": "Scorpio", "house_placement": 3}},
-          {{"house": 12, "lord": "Sun", "sign_placement": "Taurus", "house_placement": 9}}
-        ],
-        "yogas": [
-          {{"name": "Gaja Kesari Yoga", "description": "Moon and Jupiter in mutual kendras", "strength": "strong"}},
-          {{"name": "Budh Aditya Yoga", "description": "Sun and Mercury conjunction", "strength": "moderate"}}
-        ],
-        "dasha": {{
-          "current_mahadasha": "Venus",
-          "current_antardasha": "Mercury",
-          "mahadasha_start": "2022-01-15",
-          "mahadasha_end": "2042-01-15",
-          "antardasha_end": "2024-11-15"
-        }},
-        "planetary_strengths": {{
-          "exalted": ["Mars in Capricorn", "Jupiter in Cancer"],
-          "own_sign": ["Sun in Leo"],
-          "debilitated": [],
-          "combust": [],
-          "retrograde": ["Rahu", "Ketu"]
-        }},
-        "house_analysis": [
-          {{"house": 1, "strength": "moderate", "key_planets": ["Ascendant Lord in 8th"]}},
-          {{"house": 9, "strength": "strong", "key_planets": ["Sun in 9th - dharma, fortune"]}}
-        ],
-        "chart_summary": "Virgo ascendant with strong analytical mind. Exalted Mars in 5th brings creative intelligence and courage. Jupiter in 11th house indicates gains through wisdom and teaching. Venus Mahadasha running - favorable for relationships and creativity. Strong spiritual inclinations with Sun in 9th house."
-      }}
-
-      CALCULATION REQUIREMENTS:
-      1. Use sidereal (fixed) zodiac with {ayanamsha} ayanamsha
-      2. Calculate precise degrees and minutes for all planets
-      3. Determine nakshatra and pada for each planet
-      4. Identify house lords and their placements
-      5. Check for major yogas (Gaja Kesari, Raj, Dhana, etc.)
-      6. Calculate current Vimshottari Dasha period
-      7. Assess planetary strengths (exaltation, debilitation, retrograde)
-      8. Provide insightful chart summary (3-4 sentences)
-
-      Be scientifically accurate with astronomical positions. This is a birth chart for lifetime reference.
-
-      birth_date = {_.birth_date}
-      birth_time = {_.birth_time}
-      birth_location = {_.birth_location}
-      birth_timezone = {_.birth_timezone}
-      ayanamsha = {_.ayanamsha}
+      You are a Vedic astrologer. Calculate a complete Vedic birth chart.
+      
+      Birth Data: {steps[0].output.birth_context}
+      Ayanamsha: {steps[0].input.ayanamsha}
+      
+      Return ONLY valid JSON (no markdown, no explanations) with these fields:
+      - system: "vedic"
+      - sun_sign: string (e.g. "Leo")
+      - moon_sign: string
+      - ascendant: string
+      - planets: array of objects with name, sign, house, degree, nakshatra, retrograde
+      - dasha: object with current_mahadasha, current_antardasha
+      - chart_summary: string (3-4 sentences about personality and life path)
+      
+      Use precise astronomical calculations. Be scientifically accurate.
     unwrap: true
 
+  # Parse Vedic chart
   - evaluate:
-      vedic_chart_json: $ json.loads(steps[1].output)
+      vedic_chart_cleaned: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      vedic_chart: $ json.loads(steps[2].output.vedic_chart_cleaned)
 
-  # Step 3: Generate comprehensive Western chart
+  # Generate Western chart
   - prompt: |-
-      You are a highly skilled Western astrologer with expertise in tropical zodiac systems, psychological astrology, and modern planetary interpretation including outer planets. You understand house systems, aspects, chart patterns, and their psychological implications.
-
-      BIRTH DETAILS:
-      Date: {birth_date}
-      Time: {birth_time}
-      Location: {birth_location}
-      Timezone: {birth_timezone or "UTC"}
-
-      TASK: Calculate a complete Western (tropical) birth chart using Placidus house system. Use precise astronomical calculations for planetary positions and aspects.
-
-      Return ONLY valid JSON with this EXACT structure:
-      {{
-        "system": "western",
-        "sun_sign": "Gemini",
-        "moon_sign": "Scorpio",
-        "rising_sign": "Virgo",
-        "planets": [
-          {{"name": "Sun", "sign": "Gemini", "house": 10, "degree": "24°32'", "retrograde": false}},
-          {{"name": "Moon", "sign": "Scorpio", "house": 3, "degree": "15°48'", "retrograde": false}},
-          {{"name": "Mercury", "sign": "Taurus", "house": 9, "degree": "28°15'", "retrograde": false}},
-          {{"name": "Venus", "sign": "Cancer", "house": 11, "degree": "22°10'", "retrograde": false}},
-          {{"name": "Mars", "sign": "Aquarius", "house": 6, "degree": "10°22'", "retrograde": false}},
-          {{"name": "Jupiter", "sign": "Leo", "house": 12, "degree": "8°40'", "retrograde": false}},
-          {{"name": "Saturn", "sign": "Scorpio", "house": 3, "degree": "18°25'", "retrograde": false}},
-          {{"name": "Uranus", "sign": "Capricorn", "house": 5, "degree": "5°50'", "retrograde": false}},
-          {{"name": "Neptune", "sign": "Capricorn", "house": 5, "degree": "12°35'", "retrograde": false}},
-          {{"name": "Pluto", "sign": "Scorpio", "house": 3, "degree": "15°20'", "retrograde": false}}
-        ],
-        "house_cusps": [
-          {{"house": 1, "sign": "Virgo", "degree": "15°30'"}},
-          {{"house": 2, "sign": "Libra", "degree": "10°15'"}},
-          {{"house": 3, "sign": "Scorpio", "degree": "5°40'"}},
-          {{"house": 4, "sign": "Sagittarius", "degree": "8°22'"}},
-          {{"house": 5, "sign": "Capricorn", "degree": "12°18'"}},
-          {{"house": 6, "sign": "Aquarius", "degree": "15°45'"}},
-          {{"house": 7, "sign": "Pisces", "degree": "15°30'"}},
-          {{"house": 8, "sign": "Aries", "degree": "10°15'"}},
-          {{"house": 9, "sign": "Taurus", "degree": "5°40'"}},
-          {{"house": 10, "sign": "Gemini", "degree": "8°22'"}},
-          {{"house": 11, "sign": "Cancer", "degree": "12°18'"}},
-          {{"house": 12, "sign": "Leo", "degree": "15°45'"}}
-        ],
-        "aspects": [
-          {{"planet1": "Sun", "planet2": "Moon", "aspect": "quincunx", "orb": "1°15'", "applying": true}},
-          {{"planet1": "Moon", "planet2": "Pluto", "aspect": "conjunction", "orb": "0°28'", "applying": false}},
-          {{"planet1": "Venus", "planet2": "Jupiter", "aspect": "sextile", "orb": "2°30'", "applying": true}},
-          {{"planet1": "Mars", "planet2": "Saturn", "aspect": "square", "orb": "3°03'", "applying": false}}
-        ],
-        "elements": {{
-          "fire": 1,
-          "earth": 3,
-          "air": 2,
-          "water": 4
-        }},
-        "modalities": {{
-          "cardinal": 2,
-          "fixed": 5,
-          "mutable": 3
-        }},
-        "dominant_element": "water",
-        "dominant_modality": "fixed",
-        "chart_patterns": [
-          {{"name": "T-Square", "planets": ["Mars", "Saturn", "Venus"], "description": "Tension pattern requiring growth through challenges"}},
-          {{"name": "Stellium in 3rd House", "planets": ["Moon", "Saturn", "Pluto"], "description": "Concentrated energy in communication and learning"}}
-        ],
-        "chart_summary": "Virgo rising brings analytical and service-oriented approach. Gemini Sun in 10th house indicates communication-focused career path. Scorpio Moon conjunct Pluto in 3rd suggests deep, transformative communication style. Strong fixed energy provides determination and persistence."
-      }}
-
-      CALCULATION REQUIREMENTS:
-      1. Use tropical (moving) zodiac - signs based on seasons
-      2. Use Placidus house system for house cusps
-      3. Calculate all 10 planets (Sun through Pluto)
-      4. Determine precise degrees and minutes
-      5. Calculate major aspects (conjunction 0°, opposition 180°, trine 120°, square 90°, sextile 60°) with orbs
-      6. Include minor aspects if tight (quincunx 150°, semi-sextile 30°)
-      7. Analyze element and modality distribution
-      8. Identify chart patterns (T-Square, Grand Trine, Stellium, etc.)
-      9. Provide insightful psychological summary (3-4 sentences)
-
-      Be scientifically accurate with astronomical positions. This is a birth chart for lifetime reference.
-
-      birth_date = {_.birth_date}
-      birth_time = {_.birth_time}
-      birth_location = {_.birth_location}
-      birth_timezone = {_.birth_timezone}
+      You are a Western astrologer. Calculate a complete Western birth chart.
+      
+      Birth Data: {steps[0].output.birth_context}
+      
+      Return ONLY valid JSON (no markdown, no explanations) with these fields:
+      - system: "western"
+      - sun_sign: string (e.g. "Gemini")
+      - moon_sign: string
+      - rising_sign: string
+      - planets: array of objects with name, sign, house, degree, retrograde
+      - aspects: array of major aspects (conjunction, trine, square, etc.)
+      - chart_summary: string (3-4 sentences about personality)
+      
+      Use tropical zodiac and Placidus houses. Be scientifically accurate.
     unwrap: true
 
+  # Parse Western chart
   - evaluate:
-      western_chart_json: $ json.loads(steps[2].output)
+      western_chart_cleaned: $ steps[4].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      western_chart: $ json.loads(steps[5].output.western_chart_cleaned)
 
-  # Step 4: Return both charts for MongoDB sync
+  # Find famous people with same birth date
+  - prompt: |-
+      List 5-7 notable people born on {steps[0].input.birth_date} (ignore year, just month and day).
+      
+      Include diverse types: technologists, artists, poets, leaders, scientists, etc.
+      
+      Return ONLY valid JSON array (no markdown) with objects containing:
+      - name: string
+      - category: string (e.g. "Technologist", "Artist", "Poet", "Leader")
+      - known_for: string (brief description, 10-15 words)
+      - birth_year: number
+      
+      Be factually accurate. Use real historical figures.
+    unwrap: true
+
+  # Parse famous people
+  - evaluate:
+      famous_people_cleaned: $ steps[7].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      famous_people: $ json.loads(steps[8].output.famous_people_cleaned)
+
+  # Return complete chart data
   - return:
+      julep_user_id: $ steps[0].input.julep_user_id
       success: true
-      birth_data:
-        date: $ _.birth_date
-        time: $ _.birth_time
-        location: $ _.birth_location
-        timezone: $ _.birth_timezone
-        ayanamsha: $ _.ayanamsha
-      vedic_chart: $ _.vedic_chart_json
-      western_chart: $ _.western_chart_json
-      calculated_at: $ datetime.now().isoformat()
-      message: "Both Vedic and Western charts calculated successfully"
+      birth_chart:
+        vedic: $ steps[3].output.vedic_chart
+        western: $ steps[6].output.western_chart
+        famous_people: $ steps[9].output.famous_people
+        calculated_at: $ datetime.now().isoformat()
