@@ -128,6 +128,17 @@ main:
       - Voice-optimized (no emojis)
       - Natural and conversational
       - MUST include [USERNAME] placeholder somewhere in the message for personalization
+      - NEVER mention "incident map" - reference the CONTENT mysteriously instead
+      
+      GOOD EXAMPLES:
+      - "I've been sensing those creative whispers you mentioned, [USERNAME]... have they grown stronger?"
+      - "[USERNAME], that spark about technology we touched on—has it flickered into something new?"
+      - "I sense the cosmos has been whispering to you since we last spoke, [USERNAME]... what have you noticed?"
+      
+      BAD EXAMPLES (NEVER DO THIS):
+      - "Have any ideas for your 'incident map' emerged?" ❌
+      - "Any new sparks for your incident map?" ❌
+      - "Let's update your incident map" ❌
 
       Return ONLY:
       - The first message text with [USERNAME] placeholder included, OR
