@@ -2,7 +2,6 @@ name: Update User Overview From Transcript
 description: >
   Merge the latest conversation transcript with the previous MongoDB user_overview and
   persist fresh memories to Memory Store when available.
-project: astra
 
 input_schema:
   type: object
@@ -25,28 +24,7 @@ input_schema:
       description: Latest MongoDB user_overview document or null when not available
     memory_store_token:
       type: string
-      description: Optional Memory Store MCP token to persist long-term memories
-
-tools:
-  - name: mcp_discover
-    description: Discover available Memory Store MCP tools
-    type: integration
-    integration:
-      provider: mcp
-      method: list_tools
-      setup:
-        transport: http
-        http_url: $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
-
-  - name: mcp_execute
-    description: Execute Memory Store MCP tools
-    type: integration
-    integration:
-      provider: mcp
-      method: call_tool
-      setup:
-        transport: http
-        http_url: $ f"https://beta.memory.store/mcp/?token={_.memory_store_token}"
+      description: Optional Memory Store MCP token to persist long-term memories (not yet implemented)
 
 main:
   # Prep context for the LLM prompt
@@ -65,137 +43,111 @@ main:
       NEW CONVERSATION:
       {steps[0].output.transcript_context}
 
-      TASK: Analyze the conversation and return JSON with updates. Only include fields that changed or are new. Use null for unchanged values.
+      TASK: Analyze the conversation and return JSON with updates. Only include fields that changed or are new. Use null for unchanged values. Capture notable "incidents" (creative sparks, emotional shifts, pivotal moments) that the agent can reference mysteriously later.
 
-      REQUIRED JSON FORMAT:
-      {{
-        "overview_updates": {{
-          "profile_summary": "One-line user description or null",
-          "preferences": {{
-            "communication_style": "casual|balanced|formal|null",
-            "topics_of_interest": ["array of topics"],
-            "hinglish_level": 0-100,
-            "flirt_opt_in": true|false|null,
-            "astrology_system": "vedic|western|both|null"
-          }},
-          "insights": [
-            {{"type": "insight|pattern", "content": "text", "generated_at": "ISO timestamp"}}
-          ]
-        }},
-        "conversation_summary": {{
-          "summary": "2-3 sentence recap",
-          "topics": ["keywords"],
-          "key_insights": ["insights"],
-          "questions_asked": ["questions"],
-          "emotional_tone": "1-2 words"
-        }},
-        "memories": [
-          {{"title": "short title", "content": "what to remember", "importance": "low|normal|high"}}
-        ],
-        "birth_details": {{
-          "city": "City or null",
-          "country": "Country or null",
-          "place_text": "Full location or null"
-        }}
-      }}
+      ANCHOR: birth-data-extraction-rules
+      CRITICAL BIRTH DATA RULES:
+      - Birth DATE: NEVER extract (always exists from Google OAuth, ignore if mentioned)
+      - Birth TIME: Extract ONLY if user explicitly mentions time of birth
+      - Birth PLACE: Extract ONLY if user explicitly mentions birth location (city/country)
+      - Format time naturally: "7am", "morning", "around 3pm" → Store as-is
+      - Format place naturally: "Jhajjar, Haryana" or "New York" → Extract city and country
 
-      RULES:
-      1. Return ONLY valid JSON, no explanations
-      2. Extract birth details ONLY if explicitly mentioned
+      ANCHOR: incident-map-rules
+      INCIDENT MAP GUIDELINES:
+      - Capture emotionally significant moments, creative sparks, pivotal realizations
+      - Description should be 1-2 sentences, include temporal context naturally if relevant
+      - Example: "Last week, user mentioned sudden inspiration for astro companion project"
+      - Tags should be concise: ["creativity", "technology", "innovation"]
+      - NO separate timestamp field - temporal info goes in description
+
+      REQUIRED JSON STRUCTURE:
+      Return a JSON object with these top-level keys:
+      - overview_updates: object with profile_summary (string or null), preferences (object), insights (array)
+      - conversation_summary: object with summary, topics array, key_insights array, questions_asked array, emotional_tone
+      - memories: array of objects with title, content, importance (low/normal/high)
+      - incident_map: array of objects with optional title, description (1-2 sentences), tags array
+      - birth_details: object with city, country, place_text (all optional, only if explicitly mentioned)
+      
+      PREFERENCES OBJECT STRUCTURE:
+      - communication_style: one of casual, balanced, formal, or null
+      - topics_of_interest: array of topic strings
+      - hinglish_level: number from 0 to 100
+      - flirt_opt_in: boolean or null
+      - astrology_system: one of vedic, western, both, or null
+
+      CRITICAL OUTPUT REQUIREMENTS:
+      - Return ONLY valid JSON - no explanations, no markdown, no code blocks
+      - Start with opening brace, end with closing brace
+      - Do NOT wrap in ```json or any other formatting
+      
+      EXTRACTION RULES:
+      1. NEVER extract birth DATE (always exists from OAuth)
+      2. Extract birth TIME and PLACE only if explicitly mentioned in conversation
       3. Detect Hinglish usage level (0=none, 100=high)
       4. Limit memories to important facts, not chitchat
       5. Use null for unchanged/unknown fields
-
-      birth_date = {_.birth_date}
-      birth_time = {_.birth_time}
-      birth_location = {_.birth_location}
-      birth_timezone = {_.birth_timezone}
+      6. Incident descriptions should read naturally with temporal context embedded
     unwrap: true
 
-  # Parse LLM output
+  # Parse LLM output (strip markdown code blocks if present)
   - evaluate:
-      parsed: $ json.loads(steps[1].output)
+      cleaned_output: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      parsed: $ json.loads(steps[2].output.cleaned_output)
 
   # Normalize optional sections
   - evaluate:
-      overview_updates: $ steps[2].output.get("overview_updates", {})
-      conversation_summary: $ steps[2].output.get("conversation_summary", {})
-      memories: $ [m for m in steps[2].output.get("memories", []) if m.get("content")]
-      birth_details: $ steps[2].output.get("birth_details", {})
+      overview_updates: $ steps[3].output.parsed.get("overview_updates", {})
+      conversation_summary: $ steps[3].output.parsed.get("conversation_summary", {})
+      memories: $ [m for m in steps[3].output.parsed.get("memories", []) if m.get("content")]
+      birth_details: $ steps[3].output.parsed.get("birth_details", {})
+      incident_map: $ steps[3].output.parsed.get("incident_map", [])
 
-  # Persist memories to Memory Store when a token is available
-  - if: $ _.memory_store_token and len(steps[3].output.memories) > 0
-    then:
-      - tool: mcp_discover
-        arguments: {}
-      - evaluate:
-          available_tools: $ steps[4].output.get("tools", []) if isinstance(steps[4].output, dict) else []
-          store_tool: $ next((tool["name"] for tool in _.available_tools if tool["name"] in ["store", "store_memory", "remember", "write_memory"]), None)
-      - if: $ _.store_tool is not None
-        then:
-          - tool: mcp_execute
-            arguments:
-              tool_name: $ _.store_tool
-              arguments:
-                entries: $ steps[3].output.memories
-        else:
-          - continue: null
+  # ANCHOR:memory-store-integration
+  # Note: MCP integration will be added in future iteration
+  # For now, memories are stored in MongoDB user_overview
 
-  # Generate next first_message for this user (only if conversation had substance)
+  # Generate next first_message for this user
+  - prompt: |-
+      Based on this conversation, craft a CATCHY, PERSONALIZED first message for the user's NEXT conversation.
+
+      PREVIOUS OVERVIEW:
+      {steps[0].output.overview_json}
+
+      THIS CONVERSATION:
+      {steps[0].output.transcript_context}
+
+      TASK: If this conversation was meaningful and you learned something about the user, create a great opening line. If it was just small talk or very brief, return "SKIP".
+
+      REQUIREMENTS (if creating message):
+      - 1-2 sentences max  
+      - Reference something specific from chart, conversation, or personality
+      - Warm, engaging, makes them feel seen
+      - Voice-optimized (no emojis)
+      - Natural and conversational
+      - MUST include [USERNAME] placeholder somewhere in the message for personalization
+
+      Return ONLY:
+      - The first message text with [USERNAME] placeholder included, OR
+      - "SKIP" if conversation wasn't substantial enough
+    unwrap: true
+
+  # Process the generated first message
   - evaluate:
-      conversation_was_substantial: $ len(_.transcript_context) > 50
+      generated_first_message: $ steps[5].output.strip() if steps[5].output else None
+      should_update_first_message: $ steps[5].output and steps[5].output.strip() != "SKIP" and len(steps[5].output.strip()) > 10
 
-  - if: $ _.conversation_was_substantial
-    then:
-      - prompt: |-
-          Based on this conversation, craft a CATCHY, PERSONALIZED first message for the user's NEXT conversation.
-
-          PREVIOUS OVERVIEW:
-          {overview_json}
-
-          THIS CONVERSATION:
-          {transcript_context}
-
-          TASK: If this conversation was meaningful and you learned something about the user, create a great opening line. If it was just small talk or very brief, return "SKIP".
-
-          REQUIREMENTS (if creating message):
-          - MUST include {{user_name}} placeholder for dynamic name insertion
-          - 1-2 sentences max
-          - Reference something specific from chart, conversation, or personality
-          - Warm, engaging, makes them feel seen
-          - Voice-optimized (no emojis)
-          - Natural and conversational
-
-          EXAMPLES (note the {{user_name}} placeholder):
-          - "{{user_name}}, last time you asked about career timing—I've been watching the transits for you. Ready for an update?"
-          - "Welcome back, {{user_name}}! Your Scorpio intensity came through beautifully last time. What mysteries are calling you today?"
-          - "{{user_name}}! The Moon moved into your sign since we last spoke. Perfect timing for what you're working through."
-          - "{{user_name}}, I sense you're ready to go deeper. Last time we touched on relationships—shall we explore that transit?"
-
-          CRITICAL: Always use {{user_name}} placeholder, not the actual name!
-
-          Return ONLY:
-          - The first message text with {{user_name}} placeholder, OR
-          - "SKIP" if conversation wasn't substantial enough
-
-          overview_json = {steps[0].output.overview_json}
-          transcript_context = {steps[0].output.transcript_context}
-        unwrap: true
-
-      - evaluate:
-          generated_first_message: $ steps[-1].output.strip()
-          should_update_first_message: $ _.generated_first_message != "SKIP" and len(_.generated_first_message) > 10
-    else:
-      - evaluate:
-          generated_first_message: null
-          should_update_first_message: false
-
+  # ANCHOR:task-return-payload
   # Return payload for MongoDB + follow-up orchestration
+  # All extracted data gets synced to MongoDB user_overview by transcript-processor.ts
   - return:
-      julep_user_id: $ _.julep_user_id
-      conversation_id: $ _.conversation_id
-      overview_updates: $ steps[3].output.overview_updates
-      conversation_summary: $ steps[3].output.conversation_summary
-      memories: $ steps[3].output.memories
-      birth_details: $ steps[3].output.birth_details
-      first_message: $ _.generated_first_message if _.should_update_first_message else null
+      julep_user_id: $ steps[0].input.julep_user_id
+      conversation_id: $ steps[0].input.conversation_id
+      overview_updates: $ steps[4].output.overview_updates
+      conversation_summary: $ steps[4].output.conversation_summary
+      memories: $ steps[4].output.memories
+      birth_details: $ steps[4].output.birth_details
+      incident_map: $ steps[4].output.incident_map
+      first_message: $ steps[6].output.generated_first_message if steps[6].output.should_update_first_message else None

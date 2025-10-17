@@ -10,24 +10,28 @@ const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 
 /**
  * Message in a conversation transcript
+ * ANCHOR:elevenlabs-transcript-structure
+ * Updated to match actual ElevenLabs API response format
  */
 export interface ConversationMessage {
 	role: "user" | "agent";
-	message: string;
-	timestamp: string;
+	message: string | null;
+	time_in_call_secs?: number;
+	tool_calls?: unknown[];
+	tool_results?: unknown[];
 }
 
 /**
  * Full conversation transcript structure from ElevenLabs
+ * Note: transcript is an array directly, not nested under { messages: [] }
  */
 export interface ConversationTranscript {
 	conversation_id: string;
 	agent_id: string;
 	status: string;
+	user_id?: string;
 	metadata?: Record<string, unknown>;
-	transcript: {
-		messages: ConversationMessage[];
-	};
+	transcript: ConversationMessage[];
 }
 
 /**
@@ -138,7 +142,9 @@ export class ElevenLabsClient {
 
 		elevenLabsLogger.info("Conversation fetched successfully", {
 			conversationId,
-			messageCount: transcript.transcript?.messages?.length || 0,
+			messageCount: Array.isArray(transcript.transcript)
+				? transcript.transcript.length
+				: 0,
 		});
 
 		return transcript;
@@ -146,6 +152,14 @@ export class ElevenLabsClient {
 
 	/**
 	 * Extract plain text transcript from conversation messages
+	 * ANCHOR:transcript-text-extraction
+	 *
+	 * Filters out:
+	 * - System tool calls (language_detection, etc.)
+	 * - Messages with null content
+	 * - Tool result messages
+	 *
+	 * Keeps only actual user and agent dialogue
 	 *
 	 * @param conversationId - The ElevenLabs conversation ID
 	 * @returns Formatted transcript text
@@ -155,29 +169,48 @@ export class ElevenLabsClient {
 	 * const client = new ElevenLabsClient();
 	 * const text = await client.getTranscriptText('conv_abc123');
 	 * // Returns:
-	 * // "USER: Hello
-	 * //  AGENT: Hi there!
-	 * //  USER: How are you?"
+	 * // "AGENT: Leo, Shubham Attri! The Sun's favorite child.
+	 * //  USER: I'm interested in talking to you
+	 * //  AGENT: Suno, it's wonderful you're here."
 	 * ```
 	 */
 	async getTranscriptText(conversationId: string): Promise<string> {
 		try {
 			const conversation = await this.getConversation(conversationId);
 
-			if (!conversation.transcript?.messages) {
+			if (
+				!Array.isArray(conversation.transcript) ||
+				conversation.transcript.length === 0
+			) {
 				elevenLabsLogger.warn("No transcript messages found", {
 					conversationId,
 				});
 				return "";
 			}
 
-			const transcriptText = conversation.transcript.messages
+			// Filter out system messages and tool calls, keep only actual dialogue
+			const transcriptText = conversation.transcript
+				.filter((msg) => {
+					// Keep only messages with actual content
+					if (!msg.message || msg.message.trim().length === 0) {
+						return false;
+					}
+					// Skip tool calls/results
+					if (msg.tool_calls && msg.tool_calls.length > 0) {
+						return false;
+					}
+					if (msg.tool_results && msg.tool_results.length > 0) {
+						return false;
+					}
+					return true;
+				})
 				.map((msg) => `${msg.role.toUpperCase()}: ${msg.message}`)
 				.join("\n\n");
 
 			elevenLabsLogger.debug("Transcript text extracted", {
 				conversationId,
 				length: transcriptText.length,
+				messageCount: conversation.transcript.length,
 			});
 
 			return transcriptText;

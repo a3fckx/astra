@@ -71,6 +71,12 @@ export type UserOverviewHoroscope = {
 	transit_highlights?: string[];
 };
 
+export type UserIncident = {
+	title?: string | null;
+	description: string;
+	tags?: string[];
+};
+
 export type UserOverviewBirthDetails = {
 	city?: string | null;
 	country?: string | null;
@@ -133,6 +139,7 @@ export type UserOverview = {
 	birth_details?: UserOverviewBirthDetails | null;
 	birth_chart?: UserOverviewBirthChart | null;
 	insights?: UserOverviewInsight[];
+	incident_map?: UserIncident[];
 	last_updated?: Date;
 	updated_by?: string;
 };

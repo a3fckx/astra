@@ -27,13 +27,30 @@ const taskCache = new Map<string, unknown>();
 /**
  * Get the absolute path to the agents/tasks directory
  *
+ * ANCHOR:task-directory-resolution
  * Works in both development and production (Vercel):
- * - Dev: Points to project root
+ * - Dev: Points to project root (checks both /app/agents and /agents)
  * - Production: Points to deployed directory
+ * 
+ * The tasks directory can be in two locations:
+ * 1. /astra/app/agents/tasks (when running from /app)
+ * 2. /astra/agents/tasks (project root, when running from parent)
  */
 function getTasksDirectory(): string {
-	// In Next.js, process.cwd() returns the project root
-	return path.join(process.cwd(), "agents", "tasks");
+	// Try current directory first (for Next.js runtime)
+	const currentDir = path.join(process.cwd(), "agents", "tasks");
+	if (fs.existsSync(currentDir)) {
+		return currentDir;
+	}
+	
+	// Try parent directory (for scripts run from /app directory)
+	const parentDir = path.join(process.cwd(), "..", "agents", "tasks");
+	if (fs.existsSync(parentDir)) {
+		return parentDir;
+	}
+	
+	// Default to current directory (will fail later with clear error)
+	return currentDir;
 }
 
 /**

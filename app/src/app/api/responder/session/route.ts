@@ -124,6 +124,7 @@ export async function GET(request: Request) {
 	const streakDays = userOverview?.gamification?.streak_days ?? 0;
 	const birthChart = userOverview?.birth_chart;
 	const firstMessage = userOverview?.first_message ?? null;
+	const incidentMap = userOverview?.incident_map ?? null;
 
 	return NextResponse.json({
 		session: {
@@ -149,6 +150,7 @@ export async function GET(request: Request) {
 				vedicSun: birthChart?.vedic?.sun_sign ?? null,
 				vedicMoon: birthChart?.vedic?.moon_sign ?? null,
 				westernSun: birthChart?.western?.sun_sign ?? null,
+				incidentMap: incidentMap,
 			},
 		},
 		integrations,

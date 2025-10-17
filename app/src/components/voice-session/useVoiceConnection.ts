@@ -63,6 +63,25 @@ export function useVoiceConnection({
 
 			if (source === "ai") {
 				console.info("[ElevenLabs] Agent response:", trimmed);
+
+				// ANCHOR:auto-disconnect-on-farewell
+				// Auto-disconnect when agent says farewell phrases
+				// Agent must use exact phrases for detection (documented in prompt)
+				const farewellPatterns = [
+					/farewell for now/i,
+					/may your (path|journey).{0,50}be/i,
+					/until (we speak|next time|our paths cross)/i,
+					/namaste.{0,20}(take care|goodbye|until)/i,
+				];
+
+				if (farewellPatterns.some((pattern) => pattern.test(trimmed))) {
+					console.info(
+						"[ElevenLabs] Agent farewell detected, auto-disconnecting in 2.5s",
+					);
+					setTimeout(() => {
+						void endSessionRef.current();
+					}, 2500); // 2.5s delay for graceful ending
+				}
 			} else if (source === "user") {
 				console.info("[ElevenLabs] User transcript:", trimmed);
 			}
@@ -89,8 +108,39 @@ export function useVoiceConnection({
 			}
 			setStatus(sessionActiveRef.current ? "disconnected" : "idle");
 		},
-		onDisconnect: (details) => {
+		onDisconnect: async (details) => {
 			console.info("[ElevenLabs] Conversation disconnected", details);
+
+			// ANCHOR:trigger-transcript-processing
+			// Trigger background processing immediately after conversation ends
+			// This fetches transcript, runs Julep tasks, and syncs to MongoDB
+			const conversationId = details?.conversationId;
+
+			if (conversationId) {
+				console.info(
+					"[ElevenLabs] Triggering background transcript processing",
+					conversationId,
+				);
+				try {
+					// Fire-and-forget - don't await to avoid blocking disconnect
+					fetch("/api/tasks/transcript", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ conversation_id: conversationId }),
+					}).catch((error) => {
+						console.error(
+							"[ElevenLabs] Failed to trigger transcript processing",
+							error,
+						);
+					});
+				} catch (error) {
+					console.error(
+						"[ElevenLabs] Failed to trigger transcript processing",
+						error,
+					);
+				}
+			}
+
 			sessionActiveRef.current = false;
 			setStatus("disconnected");
 		},
@@ -132,6 +182,7 @@ export function useVoiceConnection({
 						conversationId,
 						agentId,
 						workflowId: handshake?.session.workflowId ?? WORKFLOW_ID,
+						overview: handshake?.session.overview ?? null,
 					}),
 				});
 			} catch (persistenceError) {
@@ -141,7 +192,7 @@ export function useVoiceConnection({
 				);
 			}
 		},
-		[agentId, handshake?.session.workflowId],
+		[agentId, handshake?.session.workflowId, handshake?.session.overview],
 	);
 
 	const handleStart = useCallback(async () => {

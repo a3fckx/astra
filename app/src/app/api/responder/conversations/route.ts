@@ -45,6 +45,11 @@ export async function POST(request: Request) {
 	const workflowId = asTrimmedString(
 		(payload as Record<string, unknown>)?.workflowId,
 	);
+	const overviewPayload = (payload as Record<string, unknown>)?.overview;
+	const overview =
+		overviewPayload && typeof overviewPayload === "object"
+			? (overviewPayload as Record<string, unknown>)
+			: null;
 
 	const metadataCandidate = (payload as Record<string, unknown>)
 		?.metadata as unknown;
@@ -70,6 +75,7 @@ export async function POST(request: Request) {
 					workflow_id: workflowId || null,
 					metadata,
 					updated_at: now,
+					overview_snapshot: overview ?? null,
 				},
 				$setOnInsert: {
 					started_at: now,

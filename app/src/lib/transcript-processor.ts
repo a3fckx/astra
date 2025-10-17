@@ -244,6 +244,11 @@ export async function processTranscriptConversation({
 			place_text?: string | null;
 		};
 		first_message?: string;
+		incident_map?: Array<{
+			title?: string | null;
+			description?: string | null;
+			tags?: unknown;
+		}>;
 	};
 
 	const overviewUpdates = extracted.overview_updates ?? {};
@@ -324,6 +329,45 @@ export async function processTranscriptConversation({
 			? overviewUpdates.profile_summary
 			: (previousOverview.profile_summary ?? null);
 
+	const incidentEntries = Array.isArray(extracted.incident_map)
+		? extracted.incident_map
+				.map((incident) => {
+					const description =
+						typeof incident?.description === "string"
+							? incident.description.trim()
+							: "";
+					if (!description) {
+						return null;
+					}
+					return {
+						title:
+							typeof incident?.title === "string"
+								? incident.title.trim() || null
+								: null,
+						description,
+						tags: Array.isArray(incident?.tags)
+							? incident.tags
+									.filter((tag): tag is string => typeof tag === "string")
+									.map((tag) => tag.trim())
+									.filter((tag) => tag.length > 0)
+							: [],
+					};
+				})
+				.filter(
+					(
+						incident,
+					): incident is {
+						title: string | null;
+						description: string;
+						tags: string[];
+					} => incident !== null,
+				)
+		: [];
+
+	const mergedIncidents = incidentEntries.length
+		? [...(previousOverview.incident_map ?? []), ...incidentEntries].slice(-10)
+		: (previousOverview.incident_map ?? []);
+
 	const conversationSummary = extracted.conversation_summary ?? null;
 	const conversationEntry = conversationSummary
 		? {
@@ -394,10 +438,11 @@ export async function processTranscriptConversation({
 	// Merge task output with existing user_overview and persist to MongoDB
 	// This is the source of truth for ElevenLabs agent context in next conversation
 	// Update first_message if task generated a new one
+	// Replace [USERNAME] placeholder with {{user_name}} for ElevenLabs dynamic variables
 	const newFirstMessage =
 		typeof extracted.first_message === "string" &&
 		extracted.first_message.length > 10
-			? extracted.first_message
+			? extracted.first_message.replace(/\[USERNAME\]/g, "{{user_name}}")
 			: undefined;
 
 	const mergedOverview: UserOverview = {
@@ -408,6 +453,7 @@ export async function processTranscriptConversation({
 		gamification: mergedGamification,
 		latest_horoscope: mergedHoroscope ?? null,
 		insights: mergedInsights,
+		incident_map: mergedIncidents,
 		recent_conversations: recentConversations,
 		last_updated: now,
 		updated_by: result.id,

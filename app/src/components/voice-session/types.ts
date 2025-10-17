@@ -38,6 +38,12 @@ export type SessionOverview = {
 	vedicSun: string | null;
 	vedicMoon: string | null;
 	westernSun: string | null;
+	incidentMap?: Array<{
+		title?: string | null;
+		description?: string | null;
+		occurredAt?: string | null;
+		tags?: string[];
+	}>;
 };
 
 export type SessionHandshake = {

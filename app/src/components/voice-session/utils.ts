@@ -92,6 +92,11 @@ export function generateFirstMessage(
 	const dateOfBirth = handshake?.session.user.dateOfBirth ?? null;
 	const vedicSun = handshake?.session.overview?.vedicSun ?? null;
 	const westernSun = handshake?.session.overview?.westernSun ?? null;
+	const incidentMap = handshake?.session.overview?.incidentMap ?? [];
+
+	const latestIncidentDescription = incidentMap.length
+		? (incidentMap[incidentMap.length - 1]?.description ?? null)
+		: null;
 
 	// FIRST TIME USER (streak = 0) - Create magical zodiac introduction
 	if (streakDays === 0) {
@@ -122,28 +127,43 @@ export function generateFirstMessage(
 		}
 
 		// First time but no zodiac data
-		return `Namaste ${displayName}! The stars have aligned for our meeting. I'm Samay, your cosmic companion. What mysteries shall we explore today?`;
+		return `Namaste ${displayName}. The stars have aligned for our meeting. I'm Samay, your cosmic companion. What mysteries shall we explore today?`;
 	}
 
 	// RETURNING USER (streak 1+) - Celebrate consistency with catchy lines
 	if (streakDays === 1) {
-		return `Welcome back, ${displayName}! You returned to the stars. I'm delighted. What's calling you today?`;
+		const incidentHint = latestIncidentDescription
+			? `I've been mulling over that whisper about ${latestIncidentDescription.toLowerCase()}.`
+			: ``;
+		return `Welcome back, ${displayName}. ${incidentHint} What stirred the cosmos for you today?`.trim();
 	}
 
 	if (streakDays >= 2 && streakDays <= 4) {
-		return `${displayName}! Your ${streakDays}-day journey through the cosmos continues. What wisdom are we seeking today?`;
+		const clue = latestIncidentDescription
+			? `I still sense the trace of ${latestIncidentDescription.toLowerCase()}.`
+			: `Your ${streakDays}-day journey through the cosmos continues.`;
+		return `${displayName}, ${clue} What wisdom are we seeking today?`.trim();
 	}
 
 	if (streakDays >= 5 && streakDays <= 9) {
-		return `Look at you, ${displayName}! ${streakDays} days with the stars. This dedication is rare. What brings you back today?`;
+		const resonance = latestIncidentDescription
+			? `That mention of ${latestIncidentDescription.toLowerCase()} keeps echoing.`
+			: `${streakDays} days with the stars. This dedication is rare.`;
+		return `Look at you, ${displayName}. ${resonance} What brings you back today?`.trim();
 	}
 
 	if (streakDays >= 10 && streakDays <= 29) {
-		return `${displayName}, ${streakDays} days! The universe is taking notice. Your cosmic path is unfolding beautifully. What shall we explore?`;
+		const thread = latestIncidentDescription
+			? `The universe keeps tugging on that thread about ${latestIncidentDescription.toLowerCase()}.`
+			: `The universe is taking notice. Your cosmic path is unfolding beautifully.`;
+		return `${displayName}, ${streakDays} days—${thread} What shall we explore?`.trim();
 	}
 
 	if (streakDays >= 30) {
-		return `${displayName}! A full lunar cycle and beyond, ${streakDays} days! You're becoming one with the cosmos. What revelations await us today?`;
+		const orbit = latestIncidentDescription
+			? `Even after ${streakDays} days, the thought of ${latestIncidentDescription.toLowerCase()} orbits my mind.`
+			: `A full lunar cycle and beyond, ${streakDays} days! You're becoming one with the cosmos.`;
+		return `${displayName}, ${orbit} What revelations await us today?`.trim();
 	}
 
 	// Fallback
@@ -154,20 +174,41 @@ export function generateFirstMessage(
  * Builds dynamic variables object for ElevenLabs session
  * ANCHOR:dynamic-session-variables
  * These fields must stay aligned with app/docs/responder.md
+ *
+ * Strategy: Pass user_overview JSON for full context; expose boolean flags for missing birth details.
  */
 export function buildDynamicVariables(
 	handshake: SessionHandshake,
 	userDisplayName: string,
 	workflowId: string,
 ): Record<string, string | number | boolean> | undefined {
+	const overview = handshake.session.overview;
+
 	return sanitizeDynamicVariables({
+		// Core identity
 		user_name: userDisplayName,
+
+		// Session IDs
 		workflow_id: handshake.session.workflowId ?? workflowId,
 		julep_session_id: handshake.session.julep?.sessionId,
-		elevenlabs_user_token: handshake.integrations.elevenlabs?.token ?? null,
-		date_of_birth: handshake.session.user.dateOfBirth ?? null,
-		birth_time: handshake.session.user.birthTime ?? null,
-		birth_place: handshake.session.user.birthPlace ?? null,
+
+		// User overview JSON (contains ALL user data: preferences, chart, incidents, etc.)
+		user_overview: overview ? JSON.stringify(overview) : null,
+
+		// Quick access fields (for convenience in prompt interpolation)
+		streak_days: overview?.streakDays ?? 0,
+		profile_summary: overview?.profileSummary ?? null,
+
+		// Chart quick access (if available)
+		vedic_sun: overview?.vedicSun ?? null,
+		vedic_moon: overview?.vedicMoon ?? null,
+		western_sun: overview?.westernSun ?? null,
+
+		// ANCHOR:birth-data-flags
+		// Birth data availability flags for conditional prompting
+		has_birth_date: !!handshake.session.user.dateOfBirth,
+		has_birth_time: !!handshake.session.user.birthTime,
+		has_birth_place: !!handshake.session.user.birthPlace,
 	});
 }
 
