@@ -119,6 +119,11 @@ export async function GET(request: Request) {
 		});
 	}
 
+	// Extract key data from user_overview for session context
+	const userOverview = user.user_overview;
+	const streakDays = userOverview?.gamification?.streak_days ?? 0;
+	const birthChart = userOverview?.birth_chart;
+
 	return NextResponse.json({
 		session: {
 			workflowId: requestedWorkflow,
@@ -135,6 +140,13 @@ export async function GET(request: Request) {
 					: null,
 				birthTime: user.birth_time ?? null,
 				birthPlace: user.birth_location ?? null,
+			},
+			overview: {
+				streakDays: streakDays,
+				profileSummary: userOverview?.profile_summary ?? null,
+				vedicSun: birthChart?.vedic?.sun_sign ?? null,
+				vedicMoon: birthChart?.vedic?.moon_sign ?? null,
+				westernSun: birthChart?.western?.sun_sign ?? null,
 			},
 		},
 		integrations,

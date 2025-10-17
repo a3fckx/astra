@@ -31,6 +31,14 @@ export type SessionUser = {
 	birthPlace?: string | null;
 };
 
+export type SessionOverview = {
+	streakDays: number;
+	profileSummary: string | null;
+	vedicSun: string | null;
+	vedicMoon: string | null;
+	westernSun: string | null;
+};
+
 export type SessionHandshake = {
 	session: {
 		workflowId?: string;
@@ -39,6 +47,7 @@ export type SessionHandshake = {
 			userId?: string;
 		};
 		user: SessionUser;
+		overview?: SessionOverview;
 	};
 	integrations: {
 		elevenlabs: IntegrationResponse;

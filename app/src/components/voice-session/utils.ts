@@ -37,11 +37,68 @@ export function getUserDisplayName(handshake: SessionHandshake | null): string {
 }
 
 /**
- * Generates personalized first message for the agent
- * ANCHOR:elevenlabs-first-message
+ * Calculates zodiac sign from date of birth
  */
-export function generateFirstMessage(displayName: string): string {
-	return `Namaste ${displayName}! I'm Jadugar, your cosmic companion. How can I guide you through the stars today?`;
+function getZodiacSign(dateOfBirth: string | null): string | null {
+	if (!dateOfBirth) return null;
+
+	const date = new Date(dateOfBirth);
+	const month = date.getMonth() + 1; // 1-12
+	const day = date.getDate();
+
+	if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) return "Aries";
+	if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) return "Taurus";
+	if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) return "Gemini";
+	if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) return "Cancer";
+	if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) return "Leo";
+	if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) return "Virgo";
+	if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) return "Libra";
+	if ((month === 10 && day >= 23) || (month === 11 && day <= 21))
+		return "Scorpio";
+	if ((month === 11 && day >= 22) || (month === 12 && day <= 21))
+		return "Sagittarius";
+	if ((month === 12 && day >= 22) || (month === 1 && day <= 19))
+		return "Capricorn";
+	if ((month === 1 && day >= 20) || (month === 2 && day <= 18))
+		return "Aquarius";
+	if ((month === 2 && day >= 19) || (month === 3 && day <= 20)) return "Pisces";
+
+	return null;
+}
+
+/**
+ * Generates personalized first message based on streak and user data
+ * ANCHOR:elevenlabs-first-message
+ *
+ * Returns different greetings:
+ * - First time (streak 0-1): Zodiac-based intro
+ * - Returning user (streak 2+): Welcome back with streak celebration
+ */
+export function generateFirstMessage(
+	displayName: string,
+	handshake: SessionHandshake | null,
+): string {
+	const streakDays = handshake?.session.overview?.streakDays ?? 0;
+	const dateOfBirth = handshake?.session.user.dateOfBirth ?? null;
+	const vedicSun = handshake?.session.overview?.vedicSun ?? null;
+	const westernSun = handshake?.session.overview?.westernSun ?? null;
+
+	// Returning user with streak
+	if (streakDays >= 2) {
+		const fireEmoji = streakDays >= 5 ? " 🔥" : "";
+		return `Welcome back, ${displayName}!${fireEmoji} Your ${streakDays}-day streak is inspiring. What cosmic wisdom are you seeking today?`;
+	}
+
+	// First-time or second-time user - create zodiac intro
+	const zodiacSign =
+		westernSun || vedicSun || getZodiacSign(dateOfBirth) || null;
+
+	if (zodiacSign) {
+		return `Namaste ${displayName}! Ah, a ${zodiacSign}—the stars have been waiting for you. I'm Samay, your cosmic companion. What brings you to the heavens today?`;
+	}
+
+	// Fallback if no birth data
+	return `Namaste ${displayName}! I'm Samay, your cosmic companion. How can I guide you through the stars today?`;
 }
 
 /**

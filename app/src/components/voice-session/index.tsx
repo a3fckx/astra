@@ -35,8 +35,8 @@ export function VoiceSession({ agentId }: VoiceSessionProps) {
 	const agentPrompt = useMemo(() => getAgentPrompt(handshake), [handshake]);
 
 	const agentFirstMessage = useMemo(
-		() => generateFirstMessage(userDisplayName),
-		[userDisplayName],
+		() => generateFirstMessage(userDisplayName, handshake),
+		[userDisplayName, handshake],
 	);
 
 	const dynamicVariables = useMemo(() => {

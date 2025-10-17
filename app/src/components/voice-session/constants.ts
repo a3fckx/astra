@@ -12,7 +12,7 @@ export const MICROPHONE_UNSUPPORTED_WARNING =
 	"This browser does not support microphone access. Please try another browser or device.";
 
 export const CONNECTION_LABELS = {
-	connected: "Connected to Jadugar",
+	connected: "Connected to Samay",
 	connecting: "Connecting…",
 	disconnected: "Disconnected",
 	idle: "Starting…",
@@ -20,9 +20,9 @@ export const CONNECTION_LABELS = {
 
 export const SESSION_DESCRIPTIONS = {
 	connected: (name: string) =>
-		`Hey ${name}, Jadugar is listening. Speak naturally and we'll take it from here.`,
+		`Hey ${name}, Samay is listening. Speak naturally and we'll take it from here.`,
 	idle: (name: string) =>
-		`Hey ${name}, press start when you're ready to talk to Jadugar. We'll open the mic once you approve it.`,
+		`Hey ${name}, press start when you're ready to talk to Samay. We'll open the mic once you approve it.`,
 } as const;
 
 export const BUTTON_LABELS = {
@@ -36,8 +36,8 @@ export const BUTTON_LABELS = {
 } as const;
 
 export const STATUS_MESSAGES = {
-	micRequesting: "Please allow microphone access so Jadugar can hear you.",
-	micMuted: "Microphone muted — Jadugar can't hear you until you unmute.",
+	micRequesting: "Please allow microphone access so Samay can hear you.",
+	micMuted: "Microphone muted — Samay can't hear you until you unmute.",
 	handshakeLoading:
 		"Still preparing your session. Please try again momentarily.",
 	sessionUnavailable:
