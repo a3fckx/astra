@@ -64,6 +64,101 @@ astra/
 
 ---
 
+## How Julep Integration Works (SDK-Based)
+
+**CRITICAL:** Astra uses the **Julep Node.js SDK** programmatically, NOT Julep CLI or `julep.yaml` deployment.
+
+### Agent Setup (One-Time)
+
+1. **Create Agent via Julep API** (or dashboard):
+   ```typescript
+   const agent = await julepClient.agents.create({
+     name: "Astra Background Worker",
+     model: "gemini-2.5-flash",
+     project: "astra",
+     about: "Background processing agent...",
+     instructions: "..."
+   });
+   // Returns: { id: "agent_abc123" }
+   ```
+
+2. **Store Agent ID in Environment:**
+   ```bash
+   BACKGROUND_WORKER_AGENT_ID=agent_abc123
+   ```
+
+3. **Reference Document:** `agents/definitions/astra.yaml`
+   - Documents the agent configuration
+   - NOT used for deployment (no `julep deploy`)
+   - Useful for reference and manual updates
+
+### Task Execution (Runtime - Every Request)
+
+**Tasks are created dynamically from YAML and executed on-demand:**
+
+```typescript
+// 1. Load task definition from YAML
+const taskDef = loadTaskDefinition('TRANSCRIPT_PROCESSOR');
+// Reads: agents/tasks/transcript-processor.yaml
+
+// 2. Create task instance for this execution
+const task = await julepClient.createTask(agentId, taskDef);
+// Returns: { id: "task_xyz789" }
+
+// 3. Execute with user-specific input
+const execution = await julepClient.executeTask(task.id, {
+  input: {
+    julep_user_id: user.julep_user_id,
+    conversation_id: "conv_123",
+    transcript_text: "full transcript...",
+    existing_overview: user.user_overview
+  }
+});
+
+// 4. SDK polls every 2s until completion
+// Returns: { status: "succeeded", output: {...} }
+
+// 5. Sync result to MongoDB
+await users.updateOne(
+  { id: userId },
+  { $set: { user_overview: execution.output }}
+);
+```
+
+### Key Files for SDK Integration
+
+- **SDK Wrapper:** `app/src/lib/julep-client.ts`
+  - `JulepClient` class wraps Julep SDK
+  - Methods: `createTask()`, `executeTask()`, `pollExecution()`
+  - Handles project scoping (`project: "astra"`)
+
+- **Task Loader:** `app/src/lib/tasks/loader.ts`
+  - `loadTaskDefinition()` - Loads YAML from disk
+  - Caches parsed definitions
+  - Available tasks: `TRANSCRIPT_PROCESSOR`, `CHART_CALCULATOR`, etc.
+
+- **Task Orchestrator:** `app/src/lib/transcript-processor.ts`
+  - Main orchestration function
+  - Loads task → Executes → Polls → Syncs to MongoDB
+
+### What We DON'T Use
+
+- ❌ `julep.yaml` project config (deprecated, removed)
+- ❌ `julep deploy` command
+- ❌ Julep CLI deployment workflow
+- ❌ Pre-created task instances
+
+### What We DO Use
+
+- ✅ Julep Node.js SDK (`@julep/sdk`)
+- ✅ Agent ID stored in env vars
+- ✅ YAML task definitions loaded at runtime
+- ✅ Tasks created dynamically per execution
+- ✅ SDK handles polling and completion
+- ✅ MongoDB as single source of truth
+
+---
+
 ## Voice Flow (Corrected Architecture)
 
 1. **Auth** — Better Auth Google provider issues secure session cookie backed by MongoDB.

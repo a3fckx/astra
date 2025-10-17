@@ -337,6 +337,155 @@ BACKGROUND_WORKER_AGENT_ID=agent_def456
 
 ## Background Tasks
 
+### Julep SDK Integration Approach
+
+**How Agents and Tasks Are Managed:**
+
+Astra uses the **Julep Node.js SDK** directly for agent and task management, NOT the Julep CLI or project-based deployment.
+
+#### Agent Creation (One-Time Setup)
+
+Agents are created once via the Julep API and referenced by their IDs:
+
+```typescript
+// One-time: Create agent via Julep API or dashboard
+const agent = await julepClient.agents.create({
+  name: "Astra Background Worker",
+  model: "gemini-2.5-flash",
+  project: "astra",
+  about: "Background processing agent...",
+  instructions: "Your role: process transcripts..."
+});
+
+// Store agent ID in environment variable
+// BACKGROUND_WORKER_AGENT_ID=agent_abc123
+```
+
+**Agent Definition File:** `agents/definitions/astra.yaml`
+- This is a **reference document** for the agent configuration
+- Not used for deployment (we don't run `julep deploy`)
+- Useful for documentation and manual agent creation/updates
+
+#### Task Execution (Runtime - Every Request)
+
+Tasks are **created dynamically** from YAML definitions and executed on-demand:
+
+```typescript
+// 1. Load task definition from YAML file
+const taskDef = loadTaskDefinition('TRANSCRIPT_PROCESSOR');
+// Reads: agents/tasks/transcript-processor.yaml
+// Returns: Parsed YAML object
+
+// 2. Create task instance for this agent
+const task = await julepClient.createTask(agentId, taskDef);
+// Returns: { id: "task_xyz789", ... }
+
+// 3. Execute task with user-specific input
+const execution = await julepClient.executeTask(task.id, {
+  input: {
+    julep_user_id: "user_123",
+    conversation_id: "conv_456",
+    transcript_text: "...",
+    existing_overview: {...}
+  },
+  pollOptions: {
+    maxAttempts: 60,
+    intervalMs: 2000
+  }
+});
+
+// 4. Poll until completion (succeeded/failed/cancelled)
+// SDK automatically polls and returns final result
+
+// 5. Sync result to MongoDB
+await users.updateOne(
+  { id: userId },
+  { $set: { user_overview: execution.output }}
+);
+```
+
+**Task Definition Files:** `agents/tasks/*.yaml`
+- `transcript-processor.yaml` - Extract insights from conversations
+- `chart-calculator.yaml` - Generate astrology charts
+- `gamification-tracker.yaml` - Update streaks and milestones
+- `horoscope-refresher.yaml` - Generate daily horoscopes
+- `weekly-report-generator.yaml` - Create weekly summaries
+- `persona-enrichment.yaml` - Analyze conversation patterns
+
+#### Why SDK Approach Instead of CLI?
+
+**Advantages:**
+1. **Dynamic Execution:** Create/execute tasks on-demand per request
+2. **Serverless-Friendly:** Works in Vercel/serverless environments
+3. **Flexible Input:** Each execution can have different user-specific data
+4. **No Pre-Deployment:** No need to deploy tasks ahead of time
+5. **Better Control:** Direct API control over task lifecycle
+
+**What We DON'T Use:**
+- ❌ `julep.yaml` project config (deprecated/removed)
+- ❌ `julep deploy` command (not needed)
+- ❌ Pre-created task instances (we create on-demand)
+
+**What We DO Use:**
+- ✅ Julep Node.js SDK (`@julep/sdk`)
+- ✅ Agent created once, referenced by ID
+- ✅ Tasks loaded from YAML, created dynamically
+- ✅ Execution via SDK with polling
+- ✅ Results synced to MongoDB
+
+#### Implementation Files
+
+**Core SDK Wrapper:** `app/src/lib/julep-client.ts`
+```typescript
+export class JulepClient {
+  private client: Julep;
+  private project = "astra";
+
+  // Create task from YAML definition
+  async createTask(agentId: string, taskDef: unknown) {
+    return await this.client.tasks.create(agentId, taskDef);
+  }
+
+  // Execute task with polling
+  async executeTask(taskId: string, options: ExecuteTaskOptions) {
+    const execution = await this.client.executions.create(taskId, {
+      input: options.input,
+      metadata: options.metadata
+    });
+    
+    // Poll until completion
+    if (options.pollOptions) {
+      return await this.pollExecution(execution.id, options.pollOptions);
+    }
+    
+    return execution;
+  }
+
+  // Poll execution status every 2s until done
+  async pollExecution(executionId: string, options: PollOptions) {
+    while (attempts < maxAttempts) {
+      const result = await this.client.executions.get(executionId);
+      if (result.status === "succeeded" || result.status === "failed") {
+        return result;
+      }
+      await sleep(intervalMs);
+    }
+  }
+}
+```
+
+**Task Loader:** `app/src/lib/tasks/loader.ts`
+```typescript
+export function loadTaskDefinition(taskName: TaskDefinitionName): unknown {
+  const filename = TASK_DEFINITIONS[taskName];
+  const taskPath = path.join(process.cwd(), 'agents/tasks', filename);
+  
+  // Read and parse YAML
+  const yamlContent = fs.readFileSync(taskPath, 'utf8');
+  return yaml.parse(yamlContent);
+}
+```
+
 ### Background Task Orchestration Flow
 
 **Detailed Implementation Flow (with Anchor Comments):**
