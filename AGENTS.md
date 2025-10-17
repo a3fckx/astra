@@ -301,25 +301,6 @@ Environment variables (stored in `app/.env` — never commit secrets):
 
 ---
 
-## Session Tracking (Important)
-
-Always maintain `.sessions/SESSION.md` during active work.
-
-```bash
-./session.sh start   # create SESSION.md from template
-./session.sh view    # show current notes
-./session.sh backup  # archive with timestamp
-./session.sh clear   # remove when done
-```
-
-- One active session file at a time (gitignored).
-- Track goals, files touched, commands executed, decisions, blockers.
-- No summary sidecar files; everything lives in `SESSION.md`.
-
-See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
-
----
-
 ## Code Style Guidelines
 
 ### TypeScript / React
@@ -367,9 +348,6 @@ See [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) for full workflow.
 - 📋 [`docs/julep.md`](docs/julep.md) — Julep SDK reference
 - 📖 [`docs/react-sdk.mdx`](docs/react-sdk.mdx) — ElevenLabs React SDK reference
 - 🗂️ [`agents/README.md`](agents/README.md) — Agent definitions and tasks
-
-### 🛠️ Development
-- 📝 [`docs/SESSION_TRACKING.md`](docs/SESSION_TRACKING.md) — Session logging rules
 
 ---
 

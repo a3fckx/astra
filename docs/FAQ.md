@@ -866,4 +866,3 @@ const docs = await client.users.docs.list(julepUserId, {
 **Still have questions?** Check:
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) - Complete system architecture
 - [`IMPLEMENTATION_CHECKLIST.md`](./IMPLEMENTATION_CHECKLIST.md) - Development progress tracker
-- [`SESSION_TRACKING.md`](./SESSION_TRACKING.md) - Session logging rules

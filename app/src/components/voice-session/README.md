@@ -269,5 +269,4 @@ Potential improvements to consider:
 
 - [Main Architecture](../../../docs/ARCHITECTURE.md)
 - [Persona Details](../../../docs/PERSONA.md)
-- [Session Tracking](../../../docs/SESSION_TRACKING.md)
 - [ElevenLabs React SDK](../../../docs/react-sdk.mdx)
