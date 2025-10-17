@@ -63,78 +63,59 @@ main:
 
   # Generate structured updates from transcript + existing overview
   - prompt: |-
-      You maintain the `user_overview` record for Astra's astrology companion.
-      Combine the previous overview with the new transcript to produce incremental updates.
+      Extract insights from this astrology conversation and update the user profile.
 
-      Previous overview (JSON):
+      PREVIOUS USER DATA:
       {steps[0].output.overview_json}
 
-      New conversation transcript:
-      ```
+      NEW CONVERSATION:
       {steps[0].output.transcript_context}
-      ```
 
-      Respond with **only** valid JSON matching this schema:
+      TASK: Analyze the conversation and return JSON with updates. Only include fields that changed or are new. Use null for unchanged values.
+
+      REQUIRED JSON FORMAT:
       {{
         "overview_updates": {{
-          "profile_summary": "string | null",
+          "profile_summary": "One-line user description or null",
           "preferences": {{
-            "communication_style": "casual | balanced | formal | neutral | null",
-            "topics_of_interest": ["topic1", "topic2"],
+            "communication_style": "casual|balanced|formal|null",
+            "topics_of_interest": ["array of topics"],
             "hinglish_level": 0-100,
-            "flirt_opt_in": true | false | null,
-            "astrology_system": "vedic | western | both | null",
-            "notification_preferences": object | null,
-            "favorite_astro_topics": ["topic"]
+            "flirt_opt_in": true|false|null,
+            "astrology_system": "vedic|western|both|null"
           }},
           "insights": [
-            {{
-              "type": "insight | pattern | milestone",
-              "content": "concise insight text",
-              "generated_at": "ISO timestamp"
-            }}
-          ],
-          "latest_horoscope": {{
-            "date": "YYYY-MM-DD",
-            "content": "optional horoscope text",
-            "transit_highlights": ["string"]
-          }},
-          "gamification": {{
-            "streak_days": number | null,
-            "total_conversations": number | null,
-            "milestones": ["string"],
-            "points": number | null,
-            "level": number | null
-          }}
-        }},
-        "conversation_summary": {{
-          "summary": "2-4 sentence recap",
-          "topics": ["topic keywords"],
-          "key_insights": ["bullet insight"],
-          "questions_asked": ["user question"],
-          "emotional_tone": "one or two words",
-          "follow_up_actions": ["optional action items"]
-          }},
-          "memories": [
-            {{
-              "title": "short title",
-              "content": "memory content to store long-term",
-              "importance": "low | normal | high"
-            }}
+            {{"type": "insight|pattern", "content": "text", "generated_at": "ISO timestamp"}}
           ]
         }},
+        "conversation_summary": {{
+          "summary": "2-3 sentence recap",
+          "topics": ["keywords"],
+          "key_insights": ["insights"],
+          "questions_asked": ["questions"],
+          "emotional_tone": "1-2 words"
+        }},
+        "memories": [
+          {{"title": "short title", "content": "what to remember", "importance": "low|normal|high"}}
+        ],
         "birth_details": {{
-          "city": "City name or null",
-          "country": "Country name or null",
-          "place_text": "Full birth place text or null"
+          "city": "City or null",
+          "country": "Country or null",
+          "place_text": "Full location or null"
         }}
       }}
 
-      Rules:
-      - Preserve previous values by leaving fields null when nothing changed.
-      - Never invent data; rely only on the transcript.
-      - `hinglish_level` should be an integer between 0 and 100.
-      - Limit `memories` to high-signal facts or commitments.
+      RULES:
+      1. Return ONLY valid JSON, no explanations
+      2. Extract birth details ONLY if explicitly mentioned
+      3. Detect Hinglish usage level (0=none, 100=high)
+      4. Limit memories to important facts, not chitchat
+      5. Use null for unchanged/unknown fields
+
+      birth_date = {_.birth_date}
+      birth_time = {_.birth_time}
+      birth_location = {_.birth_location}
+      birth_timezone = {_.birth_timezone}
     unwrap: true
 
   # Parse LLM output

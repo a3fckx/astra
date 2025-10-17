@@ -1,102 +1,80 @@
-name: User Persona Enrichment
-description: Analyze conversation history and update user preferences based on patterns
+name: Persona Enrichment Analysis
+description: Analyze conversation patterns to refine user preferences and communication style
 project: astra
 
 input_schema:
   type: object
   required:
-    - julep_user_id
+    - recent_conversations
   properties:
-    julep_user_id:
-      type: string
-      description: The Julep user ID
-    min_conversations:
-      type: number
-      description: Minimum number of conversations before analysis
-      default: 5
-
-tools:
-  - name: search_conversation_notes
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: get_user_preferences
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: update_preferences_doc
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: create
+    recent_conversations:
+      type: array
+      items:
+        type: object
+      description: Last 10-20 conversation summaries from MongoDB
+    existing_preferences:
+      type: object
+      description: Current user preferences to update
 
 main:
-  # Step 1: Retrieve all conversation notes
-  - tool: search_conversation_notes
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "conversation"
-      metadata_filter:
-        type: "notes"
-        scope: "frontline"
-      limit: 50
-  
-  # Step 2: Check if we have enough data
+  # Check if we have enough data
   - evaluate:
-      num_conversations: $ len(steps[0].output.docs)
-  
-  - if: $ _.num_conversations < _.min_conversations
+      conversation_count: $ len(_.recent_conversations)
+      has_enough_data: $ _.conversation_count >= 5
+
+  - if: $ not _.has_enough_data
     then:
       - return:
-          message: $ f"Not enough conversations ({_.num_conversations}/{_.min_conversations}) for analysis"
+          success: false
+          message: $ f"Need at least 5 conversations for analysis. Currently: {_.conversation_count}"
           skipped: true
     else:
       - continue: null
-  
-  # Step 3: Analyze conversation patterns
+
+  # Analyze conversation patterns
   - prompt: |-
-      Analyze the following conversation summaries and extract user preferences, interests, and communication patterns:
-      
-      $ f"{'\n\n---\n\n'.join([doc.content[0] for doc in steps[0].output.docs])}"
-      
-      Provide a structured analysis including:
-      1. Communication style (formal/casual, verbose/concise)
-      2. Topics of interest
-      3. Recurring questions or concerns
-      4. Emotional patterns (optimistic, anxious, curious, etc.)
-      5. Preferred response style
-      6. Time preferences (if mentioned)
-      
-      Format as a clear, structured document.
+      Analyze these conversation summaries to understand the user's patterns and preferences.
+
+      CONVERSATIONS ({conversation_count}):
+      {"\n---\n".join([f"Topics: {conv.get('topics', [])}\nTone: {conv.get('emotional_tone', 'neutral')}\nSummary: {conv.get('summary', '')[:200]}" for conv in recent_conversations[:10]])}
+
+      CURRENT PREFERENCES:
+      {existing_preferences if existing_preferences else "None set yet"}
+
+      ANALYZE AND RETURN JSON:
+      {{
+        "communication_style": "casual|balanced|formal",
+        "topics_of_interest": ["most frequent topics"],
+        "hinglish_level": 0-100,
+        "emotional_patterns": ["curious", "anxious", "optimistic", etc.],
+        "response_preference": "concise|moderate|detailed",
+        "engagement_triggers": ["what topics get most engagement"],
+        "time_patterns": "morning person|night owl|flexible|null",
+        "insights": [
+          "User responds best to...",
+          "Shows most interest in...",
+          "Communication improves when..."
+        ]
+      }}
+
+      RULES:
+      1. Look for PATTERNS across multiple conversations
+      2. Detect Hinglish usage frequency (0=none, 50=balanced, 100=heavy)
+      3. Identify recurring topics and questions
+      4. Note emotional tone trends
+      5. Return ONLY valid JSON
+
+      conversation_count = {_.conversation_count}
+      recent_conversations = {_.recent_conversations}
+      existing_preferences = {_.existing_preferences}
     unwrap: true
-  
-  # Step 4: Get existing preferences
-  - tool: get_user_preferences
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "preferences"
-      metadata_filter:
-        type: "preferences"
-  
-  # Step 5: Update preferences document
-  - tool: update_preferences_doc
-    arguments:
-      user_id: $ _.julep_user_id
-      title: "User Preferences (Updated)"
-      content:
-        - $ steps[2].output
-      metadata:
-        type: "preferences"
-        scope: "frontline"
-        shared: true
-        updated_by: $ _.current_task_id
-        timestamp_iso: $ datetime.now().isoformat()
-        source: "persona_enrichment_task"
-        conversations_analyzed: $ _.num_conversations
+
+  # Parse and return enriched preferences
+  - evaluate:
+      enriched_preferences: $ json.loads(steps[2].output)
+
+  - return:
+      success: true
+      preferences_update: $ _.enriched_preferences
+      conversations_analyzed: $ _.conversation_count
+      generated_at: $ datetime.now().isoformat()

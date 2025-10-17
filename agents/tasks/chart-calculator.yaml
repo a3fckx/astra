@@ -57,43 +57,54 @@ main:
   - if: $ _.chart_system in ["vedic", "both"]
     then:
       - prompt: |-
-          You are an expert Vedic astrologer. Calculate a detailed birth chart based on the following birth data.
+          Calculate Vedic astrology birth chart for:
+          Date: {birth_date}, Time: {birth_time}, Location: {birth_location}
+          Timezone: {birth_timezone or "UTC"}, Ayanamsha: {ayanamsha}
 
-          **Birth Details:**
-          - Date: {birth_date}
-          - Time: {birth_time}
-          - Location: {birth_location}
-          - Timezone: {birth_timezone or "Not specified"}
-          - Ayanamsha: {ayanamsha}
-
-          Provide a detailed Vedic astrology chart analysis. Return your response as valid JSON in this exact format:
-
+          Return ONLY valid JSON:
           {{
             "system": "vedic",
-            "sun_sign": "sign name",
-            "moon_sign": "sign name",
-            "ascendant": "sign name",
+            "sun_sign": "Leo",
+            "moon_sign": "Pisces",
+            "ascendant": "Gemini",
             "planets": [
-              {{
-                "name": "Sun",
-                "sign": "sign name",
-                "house": 1,
-                "degree": "23°45'",
-                "nakshatra": "nakshatra name"
-              }}
+              {{"name": "Sun", "sign": "Leo", "house": 5, "degree": "23°45'", "nakshatra": "Magha"}},
+              {{"name": "Moon", "sign": "Pisces", "house": 12, "degree": "15°30'", "nakshatra": "Revati"}},
+              {{"name": "Mars", "sign": "Aries", "house": 8, "degree": "10°20'", "nakshatra": "Ashwini"}},
+              {{"name": "Mercury", "sign": "Virgo", "house": 6, "degree": "12°15'", "nakshatra": "Hasta"}},
+              {{"name": "Jupiter", "sign": "Sagittarius", "house": 9, "degree": "8°40'", "nakshatra": "Mula"}},
+              {{"name": "Venus", "sign": "Cancer", "house": 4, "degree": "22°10'", "nakshatra": "Ashlesha"}},
+              {{"name": "Saturn", "sign": "Capricorn", "house": 10, "degree": "18°25'", "nakshatra": "Shravana"}},
+              {{"name": "Rahu", "sign": "Gemini", "house": 3, "degree": "5°50'", "nakshatra": "Mrigashira"}},
+              {{"name": "Ketu", "sign": "Sagittarius", "house": 9, "degree": "5°50'", "nakshatra": "Mula"}}
             ],
             "house_lords": [
-              {{"house": 1, "lord": "planet name"}}
+              {{"house": 1, "lord": "Mercury"}},
+              {{"house": 2, "lord": "Venus"}},
+              {{"house": 3, "lord": "Mars"}},
+              {{"house": 4, "lord": "Moon"}},
+              {{"house": 5, "lord": "Sun"}},
+              {{"house": 6, "lord": "Mercury"}},
+              {{"house": 7, "lord": "Jupiter"}},
+              {{"house": 8, "lord": "Saturn"}},
+              {{"house": 9, "lord": "Saturn"}},
+              {{"house": 10, "lord": "Venus"}},
+              {{"house": 11, "lord": "Mars"}},
+              {{"house": 12, "lord": "Moon"}}
             ],
-            "yogas": ["Raj Yoga", "Dhana Yoga"],
+            "yogas": ["Raj Yoga", "Gaja Kesari Yoga"],
             "dasha": {{
-              "mahadasha": "planet name",
-              "antardasha": "planet name"
+              "mahadasha": "Jupiter",
+              "antardasha": "Saturn",
+              "years_remaining": 2.5
             }},
-            "strengths": ["Exalted Mars", "Strong 9th house"],
-            "challenges": ["12th house Moon", "Debilitated Venus"],
-            "chart_summary": "Brief human-readable interpretation (2-3 sentences)"
+            "strengths": ["Exalted Mars in 8th", "Strong Jupiter in own sign"],
+            "challenges": ["12th house Moon", "Saturn aspect on 4th house"],
+            "chart_summary": "Strong spiritual tendencies with Jupiter in 9th. Leadership qualities through exalted Mars. Emotional sensitivity needs grounding."
           }}
+
+          Calculate all 9 planets (Sun through Ketu), use sidereal zodiac with {ayanamsha} ayanamsha.
+          Be accurate with houses, degrees, and nakshatras.
 
           birth_date = {_.birth_date}
           birth_time = {_.birth_time}
@@ -112,54 +123,44 @@ main:
   - if: $ _.chart_system in ["western", "both"]
     then:
       - prompt: |-
-          You are an expert Western astrologer. Calculate a detailed birth chart based on the following birth data.
+          Calculate Western astrology birth chart for:
+          Date: {birth_date}, Time: {birth_time}, Location: {birth_location}, Timezone: {birth_timezone or "UTC"}
 
-          **Birth Details:**
-          - Date: {birth_date}
-          - Time: {birth_time}
-          - Location: {birth_location}
-          - Timezone: {birth_timezone or "Not specified"}
-
-          Provide a detailed Western astrology chart analysis. Return your response as valid JSON in this exact format:
-
+          Return ONLY valid JSON:
           {{
             "system": "western",
-            "sun_sign": "sign name",
-            "moon_sign": "sign name",
-            "rising_sign": "sign name",
+            "sun_sign": "Leo",
+            "moon_sign": "Pisces",
+            "rising_sign": "Gemini",
             "planets": [
-              {{
-                "name": "Sun",
-                "sign": "sign name",
-                "house": 5,
-                "degree": "23°45'12\""
-              }}
+              {{"name": "Sun", "sign": "Leo", "house": 3, "degree": "23°45'"}},
+              {{"name": "Moon", "sign": "Pisces", "house": 10, "degree": "15°30'"}},
+              {{"name": "Mercury", "sign": "Virgo", "house": 4, "degree": "12°15'"}},
+              {{"name": "Venus", "sign": "Cancer", "house": 2, "degree": "22°10'"}},
+              {{"name": "Mars", "sign": "Aries", "house": 11, "degree": "10°20'"}},
+              {{"name": "Jupiter", "sign": "Sagittarius", "house": 7, "degree": "8°40'"}},
+              {{"name": "Saturn", "sign": "Capricorn", "house": 8, "degree": "18°25'"}},
+              {{"name": "Uranus", "sign": "Aquarius", "house": 9, "degree": "5°50'"}},
+              {{"name": "Neptune", "sign": "Pisces", "house": 10, "degree": "12°35'"}},
+              {{"name": "Pluto", "sign": "Capricorn", "house": 8, "degree": "15°20'"}}
             ],
             "house_cusps": [
-              {{"house": 1, "sign": "sign name", "degree": "15°30'"}}
+              {{"house": 1, "sign": "Gemini", "degree": "15°30'"}},
+              {{"house": 2, "sign": "Cancer", "degree": "10°15'"}},
+              {{"house": 3, "sign": "Leo", "degree": "5°40'"}}
             ],
             "aspects": [
-              {{
-                "planet1": "Sun",
-                "planet2": "Moon",
-                "aspect": "trine",
-                "orb": "2°"
-              }}
+              {{"planet1": "Sun", "planet2": "Moon", "aspect": "trine", "orb": "2°"}},
+              {{"planet1": "Venus", "planet2": "Mars", "aspect": "square", "orb": "3°"}}
             ],
-            "elements": {{
-              "fire": 3,
-              "earth": 2,
-              "air": 3,
-              "water": 2
-            }},
-            "modalities": {{
-              "cardinal": 4,
-              "fixed": 3,
-              "mutable": 3
-            }},
-            "patterns": ["Grand Trine", "T-Square"],
-            "chart_summary": "Brief human-readable interpretation (2-3 sentences)"
+            "elements": {{"fire": 3, "earth": 2, "air": 3, "water": 2}},
+            "modalities": {{"cardinal": 4, "fixed": 3, "mutable": 3}},
+            "patterns": ["Grand Trine in Water", "T-Square involving Mars"],
+            "chart_summary": "Creative and communicative with Gemini rising. Strong emotional depth from Pisces Moon. Leadership through Leo Sun."
           }}
+
+          Use tropical zodiac, Placidus house system. Calculate all 10 planets + Ascendant.
+          Include major aspects (conjunction, opposition, trine, square, sextile) with orbs.
 
           birth_date = {_.birth_date}
           birth_time = {_.birth_time}

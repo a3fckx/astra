@@ -1,325 +1,105 @@
 name: Generate Weekly Companion Report
-description: Summarize the week's conversations, astro events, gamification progress, and provide forward-looking guidance
+description: Create warm, personalized weekly summary of conversations and progress
 project: astra
 
 input_schema:
   type: object
   required:
-    - julep_user_id
+    - user_name
+    - recent_conversations
   properties:
-    julep_user_id:
+    user_name:
       type: string
-      description: The Julep user ID
-    week_start_date:
+      description: User's first name
+    recent_conversations:
+      type: array
+      items:
+        type: object
+      description: Last 7 days of conversation summaries from MongoDB
+    gamification:
+      type: object
+      description: Current gamification stats (streak, total conversations, milestones)
+    preferences:
+      type: object
+      description: User preferences (hinglish_level, communication_style)
+    birth_chart_summary:
       type: string
-      description: ISO date string for week start (defaults to 7 days ago)
-      default: null
-    include_chart_insights:
-      type: boolean
-      description: Include birth chart insights in the report
-      default: true
-
-tools:
-  - name: search_week_notes
-    description: Search conversation notes from the past week
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_week_horoscopes
-    description: Search horoscopes from the past week
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_gamification
-    description: Get current gamification progress
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_profile
-    description: Get user profile for personalization
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_preferences
-    description: Get user preferences for tone and style
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_chart
-    description: Get user's birth chart for insights
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: create_report_doc
-    description: Create weekly report document
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: create
+      description: Brief chart summary if available
 
 main:
-  # Step 1: Calculate date range
+  # Calculate week stats
   - evaluate:
-      week_start: $ datetime.fromisoformat(_.week_start_date) if _.week_start_date else (datetime.now() - timedelta(days=7))
-      week_end: $ datetime.now()
-      week_start_iso: $ _.week_start.isoformat()
-      week_end_iso: $ _.week_end.isoformat()
+      conversation_count: $ len(_.recent_conversations)
+      all_topics: $ [topic for conv in _.recent_conversations for topic in conv.get("topics", [])]
+      unique_topics: $ list(set(_.all_topics))
+      streak: $ _.gamification.get("streak_days", 0) if _.gamification else 0
+      total_convos: $ _.gamification.get("total_conversations", 0) if _.gamification else 0
+      new_milestones: $ _.gamification.get("milestones", []) if _.gamification else []
+      hinglish: $ _.preferences.get("hinglish_level", 40) if _.preferences else 40
+      style: $ _.preferences.get("communication_style", "casual") if _.preferences else "casual"
 
-  # Step 2: Get user profile for personalized greeting
-  - tool: search_profile
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "profile"
-      metadata_filter:
-        type: "profile"
-        scope: "frontline"
-      limit: 1
-
-  - evaluate:
-      profile_doc: $ steps[-1].output.docs[0] if len(steps[-1].output.docs) > 0 else None
-      user_name: $ "there"
-
-  # Step 3: Extract user name from profile
-  - if: $ _.profile_doc is not None
-    then:
-      - prompt: |-
-          Extract just the user's first name from this profile content. Return only the name, nothing else.
-          If no name is found, return "friend".
-
-          Profile: {profile_content}
-
-          profile_content = {_.profile_doc.content[0] if len(_.profile_doc.content) > 0 else ""}
-        unwrap: true
-
-      - evaluate:
-          user_name: $ steps[-1].output.strip()
-
-  # Step 4: Get user preferences for tone/style
-  - tool: search_preferences
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "preferences"
-      metadata_filter:
-        type: "preferences"
-        scope: "frontline"
-      limit: 1
-
-  - evaluate:
-      prefs_doc: $ steps[-1].output.docs[0] if len(steps[-1].output.docs) > 0 else None
-      prefs_metadata: $ _.prefs_doc.metadata if _.prefs_doc else {}
-      hinglish_level: $ _.prefs_metadata.get("hinglish_usage", "medium")
-      communication_style: $ _.prefs_metadata.get("communication_style", "casual")
-
-  # Step 5: Get this week's conversation notes
-  - tool: search_week_notes
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "conversation"
-      metadata_filter:
-        type: "notes"
-        scope: "frontline"
-      limit: 100
-
-  - evaluate:
-      week_notes: $ [doc for doc in steps[-1].output.docs if "timestamp_iso" in doc.metadata and doc.metadata["timestamp_iso"] >= _.week_start_iso]
-      conversation_count: $ len(_.week_notes)
-      has_conversations: $ _.conversation_count > 0
-
-  # Step 6: Get this week's horoscopes
-  - tool: search_week_horoscopes
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "horoscope"
-      metadata_filter:
-        type: "horoscope"
-        scope: "background"
-      limit: 10
-
-  - evaluate:
-      week_horoscopes: $ [doc for doc in steps[-1].output.docs if "timestamp_iso" in doc.metadata and doc.metadata["timestamp_iso"] >= _.week_start_iso]
-
-  # Step 7: Get gamification progress
-  - tool: search_gamification
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "gamification"
-      metadata_filter:
-        type: "gamification"
-        scope: "background"
-      limit: 1
-
-  - evaluate:
-      gamification_doc: $ steps[-1].output.docs[0] if len(steps[-1].output.docs) > 0 else None
-      gamification_metadata: $ _.gamification_doc.metadata if _.gamification_doc else {}
-      streak_days: $ _.gamification_metadata.get("streak_days", 0)
-      total_conversations: $ _.gamification_metadata.get("total_conversations", 0)
-      new_milestones: $ _.gamification_metadata.get("new_milestones_this_update", [])
-      topics: $ _.gamification_metadata.get("topics", [])
-
-  # Step 8: Get birth chart (if requested)
-  - if: $ _.include_chart_insights
-    then:
-      - tool: search_chart
-        arguments:
-          user_id: $ _.julep_user_id
-          text: "chart"
-          metadata_filter:
-            type: "chart"
-            scope: "background"
-          limit: 1
-
-      - evaluate:
-          chart_doc: $ steps[-1].output.docs[0] if len(steps[-1].output.docs) > 0 else None
-          has_chart: $ _.chart_doc is not None
-    else:
-      - evaluate:
-          chart_doc: $ None
-          has_chart: $ False
-
-  # Step 9: Check if there's enough data for a report
-  - if: $ not _.has_conversations and len(_.week_horoscopes) == 0
-    then:
-      - return:
-          success: false
-          message: "Not enough activity this week to generate a report"
-          skipped: true
-          conversation_count: $ _.conversation_count
-    else:
-      - continue: null
-
-  # Step 10: Build conversation summary
-  - evaluate:
-      conversation_summaries: $ "\n\n---\n\n".join([
-        f"**{doc.metadata.get('timestamp_iso', 'Unknown date')[:10]}**\n{doc.content[0][:300]}..."
-        for doc in _.week_notes[:5]
-      ]) if len(_.week_notes) > 0 else "No conversations this week."
-
-      topics_discussed: $ ", ".join(list(set([
-        topic for doc in _.week_notes
-        if "topics" in doc.metadata
-        for topic in doc.metadata["topics"]
-      ]))) if len(_.week_notes) > 0 else "None"
-
-  # Step 11: Build horoscope summary
-  - evaluate:
-      horoscope_summary: $ "\n\n".join([
-        f"**{doc.metadata.get('timestamp_iso', 'Unknown')[:10]}**\n{doc.content[0][:200]}..."
-        for doc in _.week_horoscopes[:3]
-      ]) if len(_.week_horoscopes) > 0 else "No horoscopes available for this week."
-
-  # Step 12: Build gamification summary
-  - evaluate:
-      gamification_summary: $ f"""
-Current Streak: {_.streak_days} day{'s' if _.streak_days != 1 else ''}
-Total Conversations: {_.total_conversations}
-Topics Explored: {', '.join(_.topics[:5]) if len(_.topics) > 0 else 'None yet'}
-{f"New Milestones: {', '.join(_.new_milestones)}" if len(_.new_milestones) > 0 else ""}
-"""
-
-  # Step 13: Generate the weekly report
+  # Generate weekly report
   - prompt: |-
-      You are Astra, a warm, wise astrology companion. Generate a personalized weekly report for {user_name}.
+      Create a warm weekly check-in for {user_name}, your astrology companion.
 
-      **User Preferences:**
-      - Hinglish level: {hinglish_level}
-      - Communication style: {communication_style}
+      THIS WEEK'S ACTIVITY:
+      - {conversation_count} conversations
+      - Topics: {", ".join(unique_topics) if unique_topics else "General chat"}
+      - {streak}-day streak, {total_convos} total conversations
+      {f"- New milestones: {', '.join(new_milestones[:3])}" if new_milestones else ""}
 
-      **This Week's Data:**
+      {f"BIRTH CHART: {birth_chart_summary}" if birth_chart_summary else ""}
 
-      **Conversations ({conversation_count}):**
-      {conversation_summaries}
+      PREFERENCES:
+      - Hinglish level: {hinglish}% (0=none, 100=heavy)
+      - Style: {style}
 
-      **Topics Discussed:** {topics_discussed}
+      CREATE A 4-PARAGRAPH WEEKLY REPORT:
 
-      **Horoscopes This Week:**
-      {horoscope_summary}
+      1. WARM GREETING: Address {user_name}, acknowledge the week
+      2. JOURNEY RECAP: Highlight conversation themes and growth (2-3 sentences)
+      3. CELEBRATE PROGRESS: Note streak, milestones, topics explored with genuine enthusiasm
+      4. LOOKING AHEAD: One insight or reflection prompt for next week
 
-      **Progress:**
-      {gamification_summary}
+      TONE:
+      - Like a caring friend checking in, not a data dump
+      - Use {hinglish}% Hinglish (mix Hindi/English naturally)
+      - Be {style} but always supportive
+      - 2-3 emojis MAX
+      - Keep it conversational and warm
 
-      {f"**Birth Chart Available:** Yes - Include a brief insight based on current planetary transits relevant to their chart." if _.has_chart else "**Birth Chart:** Not yet complete."}
+      EXAMPLE STRUCTURE:
+      "Hey {user_name}! 🌟 Another week with the stars...
 
-      ---
+      This week you dove into [topics]. I loved seeing you explore [insight]. Your questions about [topic] showed real depth.
 
-      Generate a warm, personalized weekly report with these sections:
+      Your {streak}-day streak is inspiring! That's dedication to self-discovery. [If milestone:] And wow—[milestone celebration]!
 
-      1. **Greeting:** Address {user_name} warmly, acknowledge the week that passed
-      2. **This Week's Journey:** Summarize conversation highlights and topics explored (2-3 sentences)
-      3. **Cosmic Context:** Brief mention of relevant astrological events or horoscopes from the week
-      4. **Your Growth:** Celebrate their progress - streak, conversations, new milestones
-      5. **Reflection Prompt:** One thoughtful question to deepen self-awareness based on their topics
-      6. **Looking Ahead:** Brief guidance for the coming week - what to focus on or watch for
+      For next week, I'm curious: [thoughtful question based on their topics]. The cosmos is shifting toward [brief transit mention if relevant]. Stay open to [gentle guidance].
 
-      **Tone Guidelines:**
-      - Use {hinglish_level} level Hinglish (low=10-20%, medium=30-40%, high=50%+)
-      - Be {communication_style} but always warm and supportive
-      - Keep it 4-6 paragraphs total (not too long)
-      - Use emojis sparingly (2-3 max)
-      - Make it feel like a caring companion checking in, not a robotic summary
-      - If they had a great streak or milestone, celebrate it genuinely
+      See you soon! ✨"
 
       user_name = {_.user_name}
-      hinglish_level = {_.hinglish_level}
-      communication_style = {_.communication_style}
       conversation_count = {_.conversation_count}
-      conversation_summaries = {_.conversation_summaries}
-      topics_discussed = {_.topics_discussed}
-      horoscope_summary = {_.horoscope_summary}
-      gamification_summary = {_.gamification_summary}
-      has_chart = {_.has_chart}
+      unique_topics = {_.unique_topics}
+      streak = {_.streak}
+      total_convos = {_.total_convos}
+      new_milestones = {_.new_milestones}
+      birth_chart_summary = {_.birth_chart_summary}
+      hinglish = {_.hinglish}
+      style = {_.style}
     unwrap: true
 
-  # Step 14: Create report document
-  - tool: create_report_doc
-    arguments:
-      user_id: $ _.julep_user_id
-      title: $ f"Weekly Report - Week of {_.week_start.strftime('%B %d, %Y')}"
-      content:
-        - $ steps[-1].output
-      metadata:
-        type: "reports"
-        scope: "background"
-        shared: true
-        updated_by: $ _.current_task_id or "weekly-report-generator"
-        timestamp_iso: $ datetime.now().isoformat()
-        source: "scheduled_task"
-
-        # Date range for filtering
-        week_start: $ _.week_start_iso
-        week_end: $ _.week_end_iso
-
-        # Stats included
-        conversation_count: $ _.conversation_count
-        topics_covered: $ _.topics_discussed
-        streak_days: $ _.streak_days
-        new_milestones_count: $ len(_.new_milestones)
-
-  # Step 15: Return success summary
+  # Return report for MongoDB sync
   - return:
       success: true
-      report_id: $ steps[-1].output.id if "id" in steps[-1].output else "unknown"
-      week_start: $ _.week_start_iso
-      week_end: $ _.week_end_iso
-      conversation_count: $ _.conversation_count
-      topics_covered: $ _.topics_discussed
-      streak_days: $ _.streak_days
-      message: "Weekly report generated successfully"
+      weekly_report:
+        week_start: $ (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        week_end: $ datetime.now().strftime("%Y-%m-%d")
+        content: $ steps[1].output
+        stats:
+          conversations: $ _.conversation_count
+          topics: $ _.unique_topics
+          streak: $ _.streak
+          milestones: $ _.new_milestones
+        generated_at: $ datetime.now().isoformat()

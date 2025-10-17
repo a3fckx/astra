@@ -1,71 +1,81 @@
-name: Daily Horoscope Update
-description: Generate and update daily horoscope for a user based on their birth data
+name: Daily Horoscope Generator
+description: Generate personalized daily horoscope based on user birth chart
 project: astra
 
 input_schema:
   type: object
   required:
-    - julep_user_id
+    - sun_sign
+    - moon_sign
   properties:
-    julep_user_id:
+    sun_sign:
       type: string
-      description: The Julep user ID
-
-tools:
-  - name: search_user_profile
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: create_horoscope_doc
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: create
+      description: User's sun sign (e.g., "Leo", "Pisces")
+    moon_sign:
+      type: string
+      description: User's moon sign
+    rising_sign:
+      type: string
+      description: User's rising/ascendant sign (optional)
+    user_name:
+      type: string
+      description: User's first name for personalization
+    recent_topics:
+      type: array
+      items:
+        type: string
+      description: Recent conversation topics for context
+    astrology_system:
+      type: string
+      enum: [vedic, western, both]
+      default: vedic
+      description: Which system to base horoscope on
 
 main:
-  # Step 1: Search for user profile with birth data
-  - tool: search_user_profile
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "date of birth"
-      metadata_filter:
-        type: "profile"
-        scope: "frontline"
-    
-  # Step 2: Extract birth data
-  - evaluate:
-      birth_data: $ steps[0].output.docs[0].content if steps[0].output.docs else "Unknown"
-  
-  # Step 3: Generate horoscope (simplified - in production would call external API)
+  # Generate personalized daily horoscope
   - prompt: |-
-      You are an expert astrologer. Based on the following birth information:
-      
-      $ f"{_.birth_data}"
-      
-      Generate a personalized daily horoscope for today. Include:
-      - Overall energy and mood for the day
-      - Key opportunities or challenges
-      - Advice for relationships, career, and personal growth
-      - Lucky colors or numbers if applicable
-      
-      Keep it concise but insightful (2-3 paragraphs).
+      Generate today's horoscope for {user_name or "this person"}.
+
+      BIRTH CHART:
+      Sun: {sun_sign}
+      Moon: {moon_sign}
+      Rising: {rising_sign or "Unknown"}
+      System: {astrology_system}
+
+      RECENT INTERESTS: {", ".join(recent_topics) if recent_topics else "General guidance"}
+
+      Create a warm, personalized 2-3 paragraph horoscope for TODAY ({datetime.now().strftime("%B %d, %Y")}).
+
+      TONE: Warm, encouraging, specific. Like talking to a friend who trusts astrology.
+      INCLUDE:
+      - Current planetary transits affecting their signs
+      - Practical guidance for relationships, work, personal growth
+      - One specific action they can take today
+      - Lucky element (color/number/time) if relevant
+
+      AVOID: Generic zodiac advice, fear-mongering, vague predictions
+
+      EXAMPLE FORMAT:
+      "Good morning! Today's Moon in Aquarius brings fresh perspective to your emotional landscape, {user_name}. With your Pisces Moon, you might feel pulled between intuition and logic—trust both. 
+
+      Career-wise, Mercury's position favors clear communication. That project you've been hesitating on? Today's the day to pitch it. Your Leo Sun's natural confidence will shine through.
+
+      Personal tip: Wear blue today—it aligns with the water element energizing your chart. Best time for important decisions: 2-4 PM."
+
+      sun_sign = {_.sun_sign}
+      moon_sign = {_.moon_sign}
+      rising_sign = {_.rising_sign}
+      user_name = {_.user_name}
+      recent_topics = {_.recent_topics}
+      astrology_system = {_.astrology_system}
     unwrap: true
-  
-  # Step 4: Write horoscope to user docs
-  - tool: create_horoscope_doc
-    arguments:
-      user_id: $ _.julep_user_id
-      title: $ f"Daily Horoscope - {datetime.now().strftime('%Y-%m-%d')}"
-      content:
-        - $ steps[2].output
-      metadata:
-        type: "horoscope"
-        scope: "background"
-        shared: true
-        updated_by: $ _.current_task_id
-        timestamp_iso: $ datetime.now().isoformat()
-        source: "daily_horoscope_task"
+
+  # Return horoscope for MongoDB sync
+  - return:
+      success: true
+      horoscope:
+        date: $ datetime.now().strftime("%Y-%m-%d")
+        content: $ steps[0].output
+        sun_sign: $ _.sun_sign
+        moon_sign: $ _.moon_sign
+        generated_at: $ datetime.now().isoformat()
