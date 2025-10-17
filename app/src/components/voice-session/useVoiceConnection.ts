@@ -231,6 +231,18 @@ export function useVoiceConnection({
 
 			const { signedUrl } = (await response.json()) as { signedUrl: string };
 
+			// ANCHOR:debug-session-config
+			// Debug logging to verify prompt override and dynamic variables
+			console.info("[ElevenLabs] Session configuration:", {
+				hasPromptOverride: !!agentPrompt,
+				promptLength: agentPrompt?.length ?? 0,
+				firstMessage: agentFirstMessage?.substring(0, 100) + "...",
+				dynamicVariablesKeys: Object.keys(dynamicVariables ?? {}),
+				hasBirthDate: dynamicVariables?.has_birth_date,
+				hasBirthTime: dynamicVariables?.has_birth_time,
+				hasBirthPlace: dynamicVariables?.has_birth_place,
+			});
+
 			const conversationId = await startSession({
 				signedUrl,
 				connectionType: "websocket",
