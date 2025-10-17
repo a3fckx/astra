@@ -83,7 +83,7 @@ export class ElevenLabsClient {
 			const response = await fetch(url, {
 				...options,
 				headers: {
-					Authorization: `Bearer ${this.apiKey}`,
+					"xi-api-key": this.apiKey,
 					"Content-Type": "application/json",
 					...options.headers,
 				},

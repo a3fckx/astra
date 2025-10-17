@@ -1,17 +1,29 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { elevenLabsClient } from "@/lib/elevenlabs-api";
-import { getBackgroundWorkerAgentId, julepClient } from "@/lib/julep-client";
 import { logger } from "@/lib/logger";
 import { getElevenLabsConversations, getUsers } from "@/lib/mongo";
-import { loadTaskDefinition } from "@/lib/tasks/loader";
+import { processTranscriptConversation } from "@/lib/transcript-processor";
 
 const transcriptLogger = logger.child("api:tasks:transcript");
 
 /**
  * POST /api/tasks/transcript
  *
- * Triggers transcript processing task and syncs results to MongoDB user_overview
+ * ANCHOR:transcript-task-trigger
+ *
+ * Main API endpoint for triggering background processing after ElevenLabs conversation ends.
+ *
+ * Flow:
+ * 1. Validate authentication and conversation ownership
+ * 2. Call processTranscriptConversation() which:
+ *    - Fetches transcript from ElevenLabs API
+ *    - Executes Julep background task (transcript-processor.yaml)
+ *    - Merges results to MongoDB user_overview
+ * 3. Fire-and-forget trigger additional tasks (gamification, charts)
+ * 4. Return task execution details to caller
+ *
+ * This endpoint is typically called by frontend after conversation ends,
+ * or by webhooks/scheduled jobs for batch processing.
  *
  * Request body:
  * {
@@ -81,218 +93,50 @@ export async function POST(request: Request) {
 			julepUserId: user.julep_user_id,
 		});
 
-		// Fetch transcript from ElevenLabs
-		const transcriptText =
-			await elevenLabsClient.getTranscriptText(conversation_id);
-
-		if (!transcriptText) {
-			return NextResponse.json(
-				{ error: "Failed to fetch transcript from ElevenLabs" },
-				{ status: 500 },
-			);
-		}
-
-		transcriptLogger.info("Transcript fetched", {
-			conversationId: conversation_id,
-			length: transcriptText.length,
+		const result = await processTranscriptConversation({
+			user,
+			conversation,
 		});
 
-		// Load task definition
-		const taskDef = loadTaskDefinition("TRANSCRIPT_PROCESSOR");
-
-		// Get background worker agent ID
-		const agentId = getBackgroundWorkerAgentId();
-
-		// Execute task with polling
-		const result = await julepClient.createAndExecuteTask(
-			agentId,
-			taskDef,
-			{
-				julep_user_id: user.julep_user_id,
-				conversation_id,
-				transcript_text: transcriptText,
-			},
-			{
-				maxAttempts: 60, // 2 minutes timeout
-				intervalMs: 2000,
-				onProgress: (status, attempt) => {
-					transcriptLogger.debug("Task execution progress", {
-						conversationId: conversation_id,
-						status,
-						attempt,
-					});
-				},
-			},
-		);
-
-		if (result.status !== "succeeded") {
-			transcriptLogger.error("Task execution failed", {
-				executionId: result.id,
-				status: result.status,
-				error: result.error,
-			});
-
-			// Update conversation with error
-			await conversations.updateOne(
-				{ conversation_id },
-				{
-					$set: {
-						status: "completed",
-						updated_at: new Date(),
-						metadata: {
-							...conversation.metadata,
-							transcript_processed: false,
-							error: result.error || "Task execution failed",
-						},
-					},
-				},
-			);
-
-			return NextResponse.json(
-				{
-					error: "Task execution failed",
-					details: result.error || "Unknown error",
-				},
-				{ status: 500 },
-			);
-		}
-
-		transcriptLogger.info("Task execution succeeded", {
-			executionId: result.id,
-			output: result.output,
-		});
-
-		// Extract task output
-		const extracted = result.output as {
-			birth_details?: {
-				date?: string;
-				time?: string;
-				location?: string;
-				timezone?: string;
-			};
-			preferences?: {
-				communication_style?: string;
-				hinglish_level?: string;
-				topics_of_interest?: string[];
-				astrology_system?: string;
-				emotional_tone?: string;
-			};
-			summary?: string;
-			insights?: string[];
-			questions?: string[];
-			topics?: string[];
-		};
-
-		// Build MongoDB update
-		const updates: Record<string, unknown> = {
-			"user_overview.last_updated": new Date(),
-			"user_overview.updated_by": result.id,
-		};
-
-		// Update birth data if extracted
-		if (extracted.birth_details?.date) {
-			updates.date_of_birth = new Date(extracted.birth_details.date);
-		}
-		if (extracted.birth_details?.time) {
-			updates.birth_time = extracted.birth_details.time;
-		}
-		if (extracted.birth_details?.location) {
-			updates.birth_location = extracted.birth_details.location;
-		}
-		if (extracted.birth_details?.timezone) {
-			updates.birth_timezone = extracted.birth_details.timezone;
-		}
-
-		// Update preferences if extracted
-		if (extracted.preferences) {
-			updates["user_overview.preferences"] = {
-				communication_style: extracted.preferences.communication_style,
-				hinglish_level: extracted.preferences.hinglish_level,
-				topics_of_interest: extracted.preferences.topics_of_interest || [],
-				astrology_system: extracted.preferences.astrology_system,
-				emotional_tone: extracted.preferences.emotional_tone,
-			};
-		}
-
-		// Prepare conversation summary for recent_conversations
-		const conversationSummary = {
-			conversation_id,
-			date: new Date(),
-			topics: extracted.topics || [],
-			summary: extracted.summary || "",
-			key_insights: extracted.insights || [],
-			questions_asked: extracted.questions || [],
-		};
-
-		// Update MongoDB
-		await users.updateOne(
-			{ id: userId },
-			{
-				$set: updates,
-				$push: {
-					"user_overview.recent_conversations": {
-						$each: [conversationSummary],
-						$slice: -10, // Keep last 10 conversations only
-					},
-				},
-			},
-		);
-
-		transcriptLogger.info("MongoDB updated successfully", {
-			userId,
-			birthDataUpdated: !!extracted.birth_details?.date,
-			preferencesUpdated: !!extracted.preferences,
-		});
-
-		// Update conversation status
-		await conversations.updateOne(
-			{ conversation_id },
-			{
-				$set: {
-					status: "completed",
-					ended_at: new Date(),
-					updated_at: new Date(),
-					metadata: {
-						...conversation.metadata,
-						transcript_processed: true,
-						task_id: result.task_id,
-						execution_id: result.id,
-					},
-				},
-			},
-		);
-
-		// Trigger additional tasks asynchronously (don't await)
+		// ANCHOR:async-task-chaining
+		// Trigger additional background tasks asynchronously (fire-and-forget)
+		// These tasks run independently and update their own sections of user_overview
 		const triggerAdditionalTasks = async () => {
-			// Trigger chart calculation if birth data is complete
-			if (
-				extracted.birth_details?.date &&
-				extracted.birth_details?.time &&
-				extracted.birth_details?.location
-			) {
-				transcriptLogger.info("Triggering chart calculation", { userId });
-				fetch(`${process.env.NEXT_PUBLIC_APP_URL || ""}/api/tasks/chart`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ user_id: userId }),
-				}).catch((err) =>
-					transcriptLogger.error("Failed to trigger chart calculation", err),
-				);
-			}
-
-			// Trigger gamification update
+			// Trigger gamification update (streak tracking, milestones)
 			transcriptLogger.info("Triggering gamification update", { userId });
 			fetch(`${process.env.NEXT_PUBLIC_APP_URL || ""}/api/tasks/gamification`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					user_id: userId,
-					conversation_id,
+					conversation_id: result.conversation_id,
 					event_type: "conversation_completed",
 				}),
 			}).catch((err) =>
 				transcriptLogger.error("Failed to trigger gamification update", err),
 			);
+
+			// Trigger chart calculation if birth data is complete and chart doesn't exist
+			const updatedUser = await users.findOne({ id: userId });
+			const hasBirthData =
+				updatedUser?.date_of_birth &&
+				updatedUser?.birth_time &&
+				updatedUser?.birth_location;
+			const hasChart = updatedUser?.user_overview?.birth_chart;
+
+			if (hasBirthData && !hasChart) {
+				transcriptLogger.info("Triggering chart calculation", { userId });
+				fetch(`${process.env.NEXT_PUBLIC_APP_URL || ""}/api/tasks/chart`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						user_id: userId,
+						chart_system: "vedic", // Default to vedic, can be updated based on preferences
+					}),
+				}).catch((err) =>
+					transcriptLogger.error("Failed to trigger chart calculation", err),
+				);
+			}
 		};
 
 		triggerAdditionalTasks();
@@ -300,15 +144,12 @@ export async function POST(request: Request) {
 		return NextResponse.json({
 			success: true,
 			task_id: result.task_id,
-			execution_id: result.id,
-			conversation_id,
+			execution_id: result.execution_id,
+			conversation_id: result.conversation_id,
 			message: "Transcript processed and MongoDB updated successfully",
-			extracted: {
-				birth_data_updated: !!extracted.birth_details?.date,
-				preferences_updated: !!extracted.preferences,
-				insights_count: extracted.insights?.length || 0,
-				topics: extracted.topics || [],
-			},
+			overview_updates: result.overview_updates,
+			conversation_summary: result.conversation_summary,
+			memories_count: result.memories_count,
 		});
 	} catch (error) {
 		transcriptLogger.error("Failed to process transcript", error as Error);

@@ -39,6 +39,27 @@ function getTasksDirectory(): string {
 /**
  * Load a task definition from YAML file
  *
+ * ANCHOR:task-definition-loading
+ * All agent workflows live in `agents/tasks/*.yaml`. This helper is the single
+ * entry point for loading those definitions so every API route and CLI script
+ * pulls the same version.
+ *
+ * Guarantees:
+ *   - Works in dev (from repo) and production (Next.js serverless bundle)
+ *   - Caches parsed YAML to avoid re-reading on every request
+ *   - Throws with a descriptive error when a task name drifts from TASK_DEFINITIONS
+ *
+ * Business-critical tasks that rely on this loader:
+ *   - TRANSCRIPT_PROCESSOR → updates Mongo `user_overview`, Memory Store, Julep docs
+ *   - CHART_CALCULATOR     → generates Vedic/Western charts for dynamic variables
+ *   - GAMIFICATION_TRACKER → maintains streaks/milestones in `user_overview.gamification`
+ *   - HOROSCOPE_REFRESHER  → seeds the daily horoscope snapshot
+ *   - WEEKLY_REPORT        → drafts long-form summaries for the companion experience
+ *   - PERSONA_ENRICHMENT   → analyzes tone/preferences for Samay’s persona tuning
+ *
+ * When you add or rename a YAML file, update TASK_DEFINITIONS above and document the
+ * new task in docs/ARCHITECTURE.md so frontline prompts know which fields exist.
+ *
  * @param taskName - Name of the task definition (from TASK_DEFINITIONS)
  * @returns Parsed YAML object ready for Julep API
  * @throws Error if file doesn't exist or parsing fails

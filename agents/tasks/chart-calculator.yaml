@@ -5,15 +5,22 @@ project: astra
 input_schema:
   type: object
   required:
-    - julep_user_id
+    - birth_date
+    - birth_time
+    - birth_location
   properties:
-    julep_user_id:
+    birth_date:
       type: string
-      description: The Julep user ID
-    force_recalculate:
-      type: boolean
-      default: false
-      description: Force recalculation even if chart already exists
+      description: Date of birth in YYYY-MM-DD format
+    birth_time:
+      type: string
+      description: Birth time in HH:MM 24-hour format
+    birth_location:
+      type: string
+      description: Birth location as "City, Country"
+    birth_timezone:
+      type: string
+      description: IANA timezone (e.g., "Asia/Kolkata", "America/New_York")
     chart_system:
       type: string
       enum:
@@ -32,300 +39,150 @@ input_schema:
       default: lahiri
       description: Ayanamsha to use for Vedic calculations
 
-tools:
-  - name: search_profile
-    description: Search user profile for birth data
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_existing_chart
-    description: Check if chart already exists
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: search_preferences
-    description: Get user's astrology system preference
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: search
-
-  - name: create_chart_doc
-    description: Create chart document
-    type: system
-    system:
-      resource: user
-      subresource: doc
-      operation: create
-
 main:
-  # Step 1: Check if chart already exists (skip if force_recalculate)
-  - if: $ not _.force_recalculate
-    then:
-      - tool: search_existing_chart
-        arguments:
-          user_id: $ _.julep_user_id
-          text: "chart"
-          metadata_filter:
-            type: "chart"
-            scope: "background"
-          limit: 1
-
-      - if: $ len(steps[0].output.docs) > 0
-        then:
-          - return:
-              success: true
-              message: "Chart already exists. Use force_recalculate=true to regenerate."
-              existing_chart_id: $ steps[0].output.docs[0].id
-              skipped: true
-        else:
-          - continue: null
-    else:
-      - continue: null
-
-  # Step 2: Get user profile with birth data
-  - tool: search_profile
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "birth"
-      metadata_filter:
-        type: "profile"
-        scope: "frontline"
-      limit: 1
-
-  # Step 3: Extract and validate birth data
+  # Step 1: Validate birth data
   - evaluate:
-      profile_doc: $ steps[-1].output.docs[0] if len(steps[-1].output.docs) > 0 else None
-      profile_content: $ _.profile_doc.content[0] if _.profile_doc and len(_.profile_doc.content) > 0 else ""
+      has_complete_data: $ all([_.birth_date, _.birth_time, _.birth_location])
 
-  # Step 4: Parse birth data from profile content
-  - prompt: |-
-      Extract birth data from the following profile content. Return ONLY valid JSON.
-
-      Profile content:
-      {profile_content}
-
-      Extract and return in this exact JSON format:
-      {{
-        "date": "YYYY-MM-DD or null",
-        "time": "HH:MM or null",
-        "location": "City, Country or null",
-        "timezone": "IANA timezone or null",
-        "has_complete_data": true or false
-      }}
-
-      Set has_complete_data to true only if ALL fields (date, time, location) are present.
-
-      profile_content = {_.profile_content}
-    unwrap: true
-
-  # Step 5: Parse birth data JSON
-  - evaluate:
-      birth_data: $ json.loads(steps[-1].output)
-
-  # Step 6: Validate completeness
-  - if: $ not _.birth_data.has_complete_data
+  - if: $ not _.has_complete_data
     then:
       - return:
           success: false
           error: "Incomplete birth data"
-          missing_fields: $ [
-            "date" if _.birth_data.date is None else None,
-            "time" if _.birth_data.time is None else None,
-            "location" if _.birth_data.location is None else None
-          ]
           message: "Cannot calculate chart without complete birth data (date, time, location)"
     else:
       - continue: null
 
-  # Step 7: Get user's astrology system preference
-  - tool: search_preferences
-    arguments:
-      user_id: $ _.julep_user_id
-      text: "astrology system"
-      metadata_filter:
-        type: "preferences"
-        scope: "frontline"
-      limit: 1
-
-  # Step 8: Determine which system to use
-  - evaluate:
-      prefs_doc: $ steps[-1].output.docs[0] if len(steps[-1].output.docs) > 0 else None
-      prefs_metadata: $ _.prefs_doc.metadata if _.prefs_doc else {}
-
-      user_preferred_system: $ _.prefs_metadata.get("astrology_system", "not_mentioned")
-
-      # Use user preference if specified, otherwise use input parameter
-      final_system: $ _.user_preferred_system if _.user_preferred_system in ["vedic", "western", "both"] else _.chart_system
-
-  # Step 9: Generate Vedic chart calculation
-  - if: $ _.final_system in ["vedic", "both"]
+  # Step 2: Generate Vedic chart calculation
+  - if: $ _.chart_system in ["vedic", "both"]
     then:
       - prompt: |-
-          You are an expert Vedic astrologer. Calculate a detailed birth chart based on:
+          You are an expert Vedic astrologer. Calculate a detailed birth chart based on the following birth data.
 
           **Birth Details:**
-          - Date: {birth_data.date}
-          - Time: {birth_data.time}
-          - Location: {birth_data.location}
-          - Timezone: {birth_data.timezone or "Not specified"}
+          - Date: {birth_date}
+          - Time: {birth_time}
+          - Location: {birth_location}
+          - Timezone: {birth_timezone or "Not specified"}
           - Ayanamsha: {ayanamsha}
 
-          Provide a detailed Vedic astrology chart analysis including:
+          Provide a detailed Vedic astrology chart analysis. Return your response as valid JSON in this exact format:
 
-          1. **Ascendant (Lagna):** Sign and degree
-          2. **Moon Sign (Rashi):** Sign and Nakshatra
-          3. **Sun Sign:** Sign and degree
-          4. **Planetary Positions:** For all 9 planets (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu)
-             - House placement
-             - Sign placement
-             - Degree
-             - Nakshatra (for Moon especially)
-          5. **House Lords:** Which planet rules each house
-          6. **Yogas:** Any significant planetary combinations (e.g., Raj Yoga, Dhana Yoga)
-          7. **Dasha System:** Current Mahadasha and Antardasha (approximate based on Moon's position)
-          8. **Strengths:** Dignity of planets (exalted, own sign, debilitated)
-          9. **Key Insights:** Brief interpretation of the chart
+          {{
+            "system": "vedic",
+            "sun_sign": "sign name",
+            "moon_sign": "sign name",
+            "ascendant": "sign name",
+            "planets": [
+              {{
+                "name": "Sun",
+                "sign": "sign name",
+                "house": 1,
+                "degree": "23°45'",
+                "nakshatra": "nakshatra name"
+              }}
+            ],
+            "house_lords": [
+              {{"house": 1, "lord": "planet name"}}
+            ],
+            "yogas": ["Raj Yoga", "Dhana Yoga"],
+            "dasha": {{
+              "mahadasha": "planet name",
+              "antardasha": "planet name"
+            }},
+            "strengths": ["Exalted Mars", "Strong 9th house"],
+            "challenges": ["12th house Moon", "Debilitated Venus"],
+            "chart_summary": "Brief human-readable interpretation (2-3 sentences)"
+          }}
 
-          Format the output as structured text suitable for storage and future reference.
-          Be thorough but concise. This will be the user's permanent birth chart record.
-
-          birth_data = {_.birth_data}
+          birth_date = {_.birth_date}
+          birth_time = {_.birth_time}
+          birth_location = {_.birth_location}
+          birth_timezone = {_.birth_timezone}
           ayanamsha = {_.ayanamsha}
         unwrap: true
 
       - evaluate:
-          vedic_chart: $ steps[-1].output
+          vedic_chart_json: $ json.loads(steps[-1].output)
     else:
       - evaluate:
-          vedic_chart: $ None
+          vedic_chart_json: null
 
-  # Step 10: Generate Western chart calculation (if requested)
-  - if: $ _.final_system in ["western", "both"]
+  # Step 3: Generate Western chart calculation (if requested)
+  - if: $ _.chart_system in ["western", "both"]
     then:
       - prompt: |-
-          You are an expert Western astrologer. Calculate a detailed birth chart based on:
+          You are an expert Western astrologer. Calculate a detailed birth chart based on the following birth data.
 
           **Birth Details:**
-          - Date: {birth_data.date}
-          - Time: {birth_data.time}
-          - Location: {birth_data.location}
-          - Timezone: {birth_data.timezone or "Not specified"}
+          - Date: {birth_date}
+          - Time: {birth_time}
+          - Location: {birth_location}
+          - Timezone: {birth_timezone or "Not specified"}
 
-          Provide a detailed Western astrology chart analysis including:
+          Provide a detailed Western astrology chart analysis. Return your response as valid JSON in this exact format:
 
-          1. **Sun Sign:** Sign and degree
-          2. **Moon Sign:** Sign and degree
-          3. **Ascendant (Rising Sign):** Sign and degree
-          4. **Planetary Positions:** For all planets including outer planets
-             - House placement (using Placidus house system)
-             - Sign placement
-             - Degree and minutes
-          5. **House Cusps:** Degree of each house cusp
-          6. **Major Aspects:**
-             - Conjunctions (0°)
-             - Oppositions (180°)
-             - Trines (120°)
-             - Squares (90°)
-             - Sextiles (60°)
-          7. **Element Distribution:** Fire, Earth, Air, Water balance
-          8. **Modality Distribution:** Cardinal, Fixed, Mutable balance
-          9. **Chart Patterns:** Any significant patterns (Grand Trine, T-Square, Stellium, etc.)
-          10. **Key Insights:** Brief interpretation of the chart
+          {{
+            "system": "western",
+            "sun_sign": "sign name",
+            "moon_sign": "sign name",
+            "rising_sign": "sign name",
+            "planets": [
+              {{
+                "name": "Sun",
+                "sign": "sign name",
+                "house": 5,
+                "degree": "23°45'12\""
+              }}
+            ],
+            "house_cusps": [
+              {{"house": 1, "sign": "sign name", "degree": "15°30'"}}
+            ],
+            "aspects": [
+              {{
+                "planet1": "Sun",
+                "planet2": "Moon",
+                "aspect": "trine",
+                "orb": "2°"
+              }}
+            ],
+            "elements": {{
+              "fire": 3,
+              "earth": 2,
+              "air": 3,
+              "water": 2
+            }},
+            "modalities": {{
+              "cardinal": 4,
+              "fixed": 3,
+              "mutable": 3
+            }},
+            "patterns": ["Grand Trine", "T-Square"],
+            "chart_summary": "Brief human-readable interpretation (2-3 sentences)"
+          }}
 
-          Format the output as structured text suitable for storage and future reference.
-          Be thorough but concise. This will be the user's permanent birth chart record.
-
-          birth_data = {_.birth_data}
+          birth_date = {_.birth_date}
+          birth_time = {_.birth_time}
+          birth_location = {_.birth_location}
+          birth_timezone = {_.birth_timezone}
         unwrap: true
 
       - evaluate:
-          western_chart: $ steps[-1].output
+          western_chart_json: $ json.loads(steps[-1].output)
     else:
       - evaluate:
-          western_chart: $ None
+          western_chart_json: null
 
-  # Step 11: Build combined chart content
-  - evaluate:
-      chart_title: $ (
-        "Vedic Birth Chart" if _.final_system == "vedic" else
-        "Western Birth Chart" if _.final_system == "western" else
-        "Complete Birth Chart (Vedic & Western)"
-      )
-
-      chart_content_parts: []
-
-  - if: $ _.vedic_chart is not None
-    then:
-      - evaluate:
-          chart_content_parts: $ _.chart_content_parts + [
-            "=== VEDIC ASTROLOGY CHART ===",
-            "",
-            _.vedic_chart,
-            ""
-          ]
-
-  - if: $ _.western_chart is not None
-    then:
-      - evaluate:
-          chart_content_parts: $ _.chart_content_parts + [
-            "=== WESTERN ASTROLOGY CHART ===",
-            "",
-            _.western_chart,
-            ""
-          ]
-
-  - evaluate:
-      chart_metadata_section: $ f"""
-=== BIRTH DATA ===
-Date: {_.birth_data.date}
-Time: {_.birth_data.time}
-Location: {_.birth_data.location}
-Timezone: {_.birth_data.timezone or 'Not specified'}
-Ayanamsha: {_.ayanamsha if _.final_system in ['vedic', 'both'] else 'N/A'}
-System: {_.final_system}
-"""
-
-      full_chart_content: $ _.chart_metadata_section + "\n" + "\n".join(_.chart_content_parts)
-
-  # Step 12: Create chart document
-  - tool: create_chart_doc
-    arguments:
-      user_id: $ _.julep_user_id
-      title: $ _.chart_title
-      content:
-        - $ _.full_chart_content
-      metadata:
-        type: "chart"
-        scope: "background"
-        shared: true
-        updated_by: $ _.current_task_id or "chart-calculator"
-        timestamp_iso: $ datetime.now().isoformat()
-        source: "calculation"
-
-        # Searchable metadata
-        chart_system: $ _.final_system
-        ayanamsha: $ _.ayanamsha if _.final_system in ["vedic", "both"] else None
-        birth_date: $ _.birth_data.date
-        birth_time: $ _.birth_data.time
-        birth_location: $ _.birth_data.location
-        birth_timezone: $ _.birth_data.timezone
-
-        # Version tracking
-        version: 1
-        calculation_method: "ai_generated"
-
-  # Step 13: Return success
+  # Step 4: Return chart data for MongoDB sync
   - return:
       success: true
-      chart_id: $ steps[-1].output.id if "id" in steps[-1].output else "unknown"
-      chart_system: $ _.final_system
-      birth_data: $ _.birth_data
+      chart_system: $ _.chart_system
+      birth_data:
+        date: $ _.birth_date
+        time: $ _.birth_time
+        location: $ _.birth_location
+        timezone: $ _.birth_timezone
+      vedic_chart: $ _.vedic_chart_json if _.vedic_chart_json else null
+      western_chart: $ _.western_chart_json if _.western_chart_json else null
+      calculated_at: $ datetime.now().isoformat()
       message: "Chart calculated successfully"

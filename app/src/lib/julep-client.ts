@@ -273,6 +273,25 @@ export class JulepClient {
 	/**
 	 * Execute a task and optionally poll for completion
 	 *
+	 * ANCHOR:julep-task-polling
+	 * Central choke point for every background workflow. This helper wraps the
+	 * Julep executions API so the application always:
+	 *   1. dispatches an execution with the exact payload our YAML tasks expect
+	 *   2. polls until completion (2s cadence, 2 min cap by default)
+	 *   3. returns the normalized JSON that downstream Mongo updaters can merge
+	 *
+	 * Business context:
+	 * - Transcript pipeline sends: julep_user_id, conversation_id, transcript_text,
+	 *   existing_overview snapshot, and optional memory_store_token.
+	 * - Chart/gamification/report tasks piggyback on the same polling logic to keep
+	 *   Mongo + Julep docs in sync.
+	 * - Execution metadata (execution_id/task_id) is recorded on the conversation
+	 *   record so the dashboard can trace every run.
+	 *
+	 * Any change here must stay aligned with the YAML task inputs/outputs documented
+	 * in agents/tasks/*.yaml (especially transcript-processor) or the merge logic in
+	 * transcript-processor.ts will drift.
+	 *
 	 * @param taskId - Task ID to execute
 	 * @param options - Execution options
 	 * @returns Task execution result

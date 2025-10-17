@@ -337,6 +337,68 @@ BACKGROUND_WORKER_AGENT_ID=agent_def456
 
 ## Background Tasks
 
+### Background Task Orchestration Flow
+
+**Detailed Implementation Flow (with Anchor Comments):**
+
+The background task system is implemented across several key files:
+
+1. **API Trigger** (`app/src/app/api/tasks/transcript/route.ts`)
+   - `ANCHOR:transcript-task-trigger` - Entry point for post-conversation processing
+   - Validates authentication and conversation ownership
+   - Calls `processTranscriptConversation()` main orchestrator
+
+2. **Main Orchestrator** (`app/src/lib/transcript-processor.ts`)
+   - `ANCHOR:background-task-orchestration` - Core flow controller
+   - `ANCHOR:memory-store-token-resolution` - Checks for user's Memory Store token
+   - `ANCHOR:julep-task-execution` - Loads YAML + executes via Julep SDK with polling
+   - `ANCHOR:mongodb-overview-merge` - Merges task output with existing overview
+
+3. **Task Loading** (`app/src/lib/tasks/loader.ts`)
+   - `ANCHOR:task-definition-loading` - Loads and caches YAML task definitions
+   - Supports all available tasks (transcript, chart, gamification, etc.)
+
+4. **Task Execution** (`app/src/lib/julep-client.ts`)
+   - `ANCHOR:julep-task-polling` - Polls execution status until completion
+   - Returns structured JSON output
+
+5. **Task Chaining** (`app/src/app/api/tasks/transcript/route.ts`)
+   - `ANCHOR:async-task-chaining` - Fire-and-forget trigger additional tasks
+   - Gamification, chart calculation, etc.
+
+6. **Integration Tokens** (`app/src/lib/integration-tokens.ts`)
+   - `ANCHOR:integration-token-lifecycle` - Per-user token resolution with fallback
+
+**Execution Timeline:**
+
+```
+Time    Action                          Location
+─────────────────────────────────────────────────────────────────────
+T+0s    User ends conversation         ElevenLabs
+T+1s    POST /api/tasks/transcript     Frontend → API route
+T+2s    Fetch transcript from EL       ElevenLabsClient
+T+3s    Load transcript-processor.yaml TaskLoader
+T+4s    Execute Julep task             JulepClient.executeTask()
+        └─ Create execution
+        └─ Poll every 2s
+T+6s    Task step 1: Prompt LLM        Julep (Claude via OpenRouter)
+T+15s   Task step 2: Parse JSON        Julep task workflow
+T+20s   Task step 3: Memory Store      Optional MCP integration
+T+25s   Task complete (succeeded)      Poll returns result
+T+26s   Merge to MongoDB               MongoDB updateOne()
+T+27s   Trigger gamification task      Fire-and-forget HTTP call
+T+28s   Return API response            Frontend receives confirmation
+```
+
+**Key Points:**
+
+- **Async Processing:** Tasks run in background, don't block API response
+- **Polling:** SDK polls Julep every 2s (max 60 attempts = 2 minutes)
+- **Structured Output:** Tasks return JSON that maps directly to MongoDB schema
+- **Task Chaining:** Main task triggers follow-up tasks asynchronously
+- **Error Handling:** Failed tasks log errors and mark conversation as failed
+- **Caching:** Task definitions cached after first load
+
 ### Task Workflow Pattern
 
 All tasks follow this pattern:
