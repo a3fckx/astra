@@ -83,7 +83,8 @@ export function generateFirstMessage(
 	// PRIORITY 1: Use stored first_message from MongoDB (updated by background agents)
 	const storedFirstMessage = handshake?.session.overview?.firstMessage;
 	if (storedFirstMessage && storedFirstMessage.trim().length > 0) {
-		return storedFirstMessage;
+		// Replace {{user_name}} placeholder with actual display name
+		return storedFirstMessage.replace(/\{\{user_name\}\}/g, displayName);
 	}
 
 	// PRIORITY 2: Fallback to streak/zodiac-based generation

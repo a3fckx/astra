@@ -159,19 +159,23 @@ main:
           TASK: If this conversation was meaningful and you learned something about the user, create a great opening line. If it was just small talk or very brief, return "SKIP".
 
           REQUIREMENTS (if creating message):
+          - MUST include {{user_name}} placeholder for dynamic name insertion
           - 1-2 sentences max
           - Reference something specific from chart, conversation, or personality
           - Warm, engaging, makes them feel seen
           - Voice-optimized (no emojis)
           - Natural and conversational
 
-          EXAMPLES:
-          - "Welcome back! Last time you asked about career timing—I've been watching the transits for you. Ready for an update?"
-          - "Your Scorpio intensity came through beautifully last time. What mysteries are calling you today?"
-          - "The Moon moved into your sign since we last spoke. Perfect timing for what you're working through."
+          EXAMPLES (note the {{user_name}} placeholder):
+          - "{{user_name}}, last time you asked about career timing—I've been watching the transits for you. Ready for an update?"
+          - "Welcome back, {{user_name}}! Your Scorpio intensity came through beautifully last time. What mysteries are calling you today?"
+          - "{{user_name}}! The Moon moved into your sign since we last spoke. Perfect timing for what you're working through."
+          - "{{user_name}}, I sense you're ready to go deeper. Last time we touched on relationships—shall we explore that transit?"
+
+          CRITICAL: Always use {{user_name}} placeholder, not the actual name!
 
           Return ONLY:
-          - The first message text, OR
+          - The first message text with {{user_name}} placeholder, OR
           - "SKIP" if conversation wasn't substantial enough
 
           overview_json = {steps[0].output.overview_json}
