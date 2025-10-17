@@ -1,0 +1,92 @@
+name: Find Famous People Born on Same Date
+description: Find notable figures born on the same month/day to create engagement and predict personality patterns
+
+input_schema:
+  type: object
+  required:
+    - julep_user_id
+    - birth_date
+  properties:
+    julep_user_id:
+      type: string
+      description: Julep user ID for tracking
+    birth_date:
+      type: string
+      description: Date of birth in YYYY-MM-DD format (we only use month and day)
+
+main:
+  # Extract month and day for matching
+  - evaluate:
+      birth_month_day: $ f"{steps[0].input.birth_date[5:7]}-{steps[0].input.birth_date[8:10]}"
+      display_date: $ f"{steps[0].input.birth_date[5:7]}/{steps[0].input.birth_date[8:10]}"
+
+  # Find famous people born on same date
+  - prompt: |-
+      List 7-10 diverse notable people born on {steps[0].output.display_date} (month/day only, ignore year).
+      
+      CRITICAL: Include DIVERSE categories to show personality range:
+      - Technologists (Steve Jobs, Elon Musk type)
+      - Artists (painters, musicians, creatives)
+      - Poets / Writers (literary figures)
+      - Leaders (political, military, business)
+      - Scientists (researchers, inventors)
+      - Athletes (competitive spirits)
+      - Entertainers (actors, performers)
+      - Philosophers / Thinkers
+      
+      This helps us predict the user's "animal spirit" - what type of energy they embody.
+      
+      Return ONLY valid JSON array (no markdown) with objects:
+      - name: string (full name)
+      - category: string (one of the types above)
+      - known_for: string (what made them famous, 10-15 words)
+      - birth_year: number
+      - personality_trait: string (one word: "innovative", "creative", "driven", "analytical", etc.)
+      
+      Be factually accurate. Real historical/contemporary figures only.
+      Focus on successful, positive figures who show different life paths.
+    unwrap: true
+
+  # Parse famous people
+  - evaluate:
+      famous_cleaned: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      famous_people: $ json.loads(steps[2].output.famous_cleaned)
+
+  # Analyze personality patterns
+  - prompt: |-
+      Based on these famous people born on {steps[0].output.display_date}:
+      {steps[3].output.famous_people}
+      
+      Analyze the PATTERNS and ENERGY:
+      - What categories appear most? (technologist, artist, leader, etc.)
+      - What personality traits dominate?
+      - What "animal spirit" does this date embody?
+      - What paths do people born on this date tend to take?
+      
+      Return ONLY valid JSON (no markdown) with:
+      - dominant_categories: array of top 2-3 categories
+      - common_traits: array of 3-4 personality traits
+      - animal_spirit: string (e.g., "The Innovator", "The Creator", "The Warrior")
+      - life_path_prediction: string (2-3 sentences about what this person might become)
+      - energy_description: string (describe the cosmic energy of this date, 2-3 sentences)
+      
+      Make it mystical and intriguing.
+    unwrap: true
+
+  # Parse personality analysis
+  - evaluate:
+      analysis_cleaned: $ steps[4].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      personality_analysis: $ json.loads(steps[5].output.analysis_cleaned)
+
+  # Return complete famous people data
+  - return:
+      julep_user_id: $ steps[0].input.julep_user_id
+      success: true
+      birth_date: $ steps[0].input.birth_date
+      famous_people: $ steps[3].output.famous_people
+      personality_analysis: $ steps[6].output.personality_analysis
+      calculated_at: $ datetime.now().isoformat()
