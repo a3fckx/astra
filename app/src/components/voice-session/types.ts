@@ -34,6 +34,7 @@ export type SessionUser = {
 export type SessionOverview = {
 	streakDays: number;
 	profileSummary: string | null;
+	firstMessage: string | null;
 	vedicSun: string | null;
 	vedicMoon: string | null;
 	westernSun: string | null;

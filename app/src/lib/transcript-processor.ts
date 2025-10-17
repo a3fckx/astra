@@ -243,6 +243,7 @@ export async function processTranscriptConversation({
 			country?: string | null;
 			place_text?: string | null;
 		};
+		first_message?: string;
 	};
 
 	const overviewUpdates = extracted.overview_updates ?? {};
@@ -392,9 +393,17 @@ export async function processTranscriptConversation({
 	// ANCHOR:mongodb-overview-merge
 	// Merge task output with existing user_overview and persist to MongoDB
 	// This is the source of truth for ElevenLabs agent context in next conversation
+	// Update first_message if task generated a new one
+	const newFirstMessage =
+		typeof extracted.first_message === "string" &&
+		extracted.first_message.length > 10
+			? extracted.first_message
+			: undefined;
+
 	const mergedOverview: UserOverview = {
 		...previousOverview,
 		profile_summary: profileSummary ?? null,
+		first_message: newFirstMessage ?? previousOverview.first_message ?? null,
 		preferences: mergedPreferences,
 		gamification: mergedGamification,
 		latest_horoscope: mergedHoroscope ?? null,

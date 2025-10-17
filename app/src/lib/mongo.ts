@@ -125,6 +125,7 @@ export type UserOverviewBirthChart = {
 
 export type UserOverview = {
 	profile_summary?: string | null;
+	first_message?: string | null;
 	preferences?: UserOverviewPreferences;
 	recent_conversations?: UserOverviewConversation[];
 	gamification?: UserOverviewGamification;

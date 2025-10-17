@@ -141,6 +141,51 @@ main:
         else:
           - continue: null
 
+  # Generate next first_message for this user (only if conversation had substance)
+  - evaluate:
+      conversation_was_substantial: $ len(_.transcript_context) > 50
+
+  - if: $ _.conversation_was_substantial
+    then:
+      - prompt: |-
+          Based on this conversation, craft a CATCHY, PERSONALIZED first message for the user's NEXT conversation.
+
+          PREVIOUS OVERVIEW:
+          {overview_json}
+
+          THIS CONVERSATION:
+          {transcript_context}
+
+          TASK: If this conversation was meaningful and you learned something about the user, create a great opening line. If it was just small talk or very brief, return "SKIP".
+
+          REQUIREMENTS (if creating message):
+          - 1-2 sentences max
+          - Reference something specific from chart, conversation, or personality
+          - Warm, engaging, makes them feel seen
+          - Voice-optimized (no emojis)
+          - Natural and conversational
+
+          EXAMPLES:
+          - "Welcome back! Last time you asked about career timing—I've been watching the transits for you. Ready for an update?"
+          - "Your Scorpio intensity came through beautifully last time. What mysteries are calling you today?"
+          - "The Moon moved into your sign since we last spoke. Perfect timing for what you're working through."
+
+          Return ONLY:
+          - The first message text, OR
+          - "SKIP" if conversation wasn't substantial enough
+
+          overview_json = {steps[0].output.overview_json}
+          transcript_context = {steps[0].output.transcript_context}
+        unwrap: true
+
+      - evaluate:
+          generated_first_message: $ steps[-1].output.strip()
+          should_update_first_message: $ _.generated_first_message != "SKIP" and len(_.generated_first_message) > 10
+    else:
+      - evaluate:
+          generated_first_message: null
+          should_update_first_message: false
+
   # Return payload for MongoDB + follow-up orchestration
   - return:
       julep_user_id: $ _.julep_user_id
@@ -149,3 +194,4 @@ main:
       conversation_summary: $ steps[3].output.conversation_summary
       memories: $ steps[3].output.memories
       birth_details: $ steps[3].output.birth_details
+      first_message: $ _.generated_first_message if _.should_update_first_message else null

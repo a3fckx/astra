@@ -70,14 +70,23 @@ function getZodiacSign(dateOfBirth: string | null): string | null {
  * Generates personalized first message based on streak and user data
  * ANCHOR:elevenlabs-first-message
  *
- * Returns different greetings:
- * - First time (streak 0): Magical zodiac-based intro
- * - Returning user (streak 1+): Welcome back with streak milestones
+ * Priority:
+ * 1. Use stored first_message from MongoDB (updated by background agents)
+ * 2. Generate from streak/zodiac if no stored message
+ *
+ * The stored first_message is dynamic and updated after each conversation.
  */
 export function generateFirstMessage(
 	displayName: string,
 	handshake: SessionHandshake | null,
 ): string {
+	// PRIORITY 1: Use stored first_message from MongoDB (updated by background agents)
+	const storedFirstMessage = handshake?.session.overview?.firstMessage;
+	if (storedFirstMessage && storedFirstMessage.trim().length > 0) {
+		return storedFirstMessage;
+	}
+
+	// PRIORITY 2: Fallback to streak/zodiac-based generation
 	const streakDays = handshake?.session.overview?.streakDays ?? 0;
 	const dateOfBirth = handshake?.session.user.dateOfBirth ?? null;
 	const vedicSun = handshake?.session.overview?.vedicSun ?? null;

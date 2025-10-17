@@ -123,6 +123,7 @@ export async function GET(request: Request) {
 	const userOverview = user.user_overview;
 	const streakDays = userOverview?.gamification?.streak_days ?? 0;
 	const birthChart = userOverview?.birth_chart;
+	const firstMessage = userOverview?.first_message ?? null;
 
 	return NextResponse.json({
 		session: {
@@ -144,6 +145,7 @@ export async function GET(request: Request) {
 			overview: {
 				streakDays: streakDays,
 				profileSummary: userOverview?.profile_summary ?? null,
+				firstMessage: firstMessage,
 				vedicSun: birthChart?.vedic?.sun_sign ?? null,
 				vedicMoon: birthChart?.vedic?.moon_sign ?? null,
 				westernSun: birthChart?.western?.sun_sign ?? null,
