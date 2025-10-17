@@ -123,16 +123,32 @@ export function useVoiceConnection({
 				);
 				try {
 					// Fire-and-forget - don't await to avoid blocking disconnect
+					// CRITICAL: Include credentials to send session cookie for auth
 					fetch("/api/tasks/transcript", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify({ conversation_id: conversationId }),
-					}).catch((error) => {
-						console.error(
-							"[ElevenLabs] Failed to trigger transcript processing",
-							error,
-						);
-					});
+						credentials: "include", // Required for session authentication
+					})
+						.then((res) => {
+							if (!res.ok) {
+								console.error(
+									"[ElevenLabs] Transcript processing failed:",
+									res.status,
+									res.statusText,
+								);
+							} else {
+								console.info(
+									"[ElevenLabs] Transcript processing triggered successfully",
+								);
+							}
+						})
+						.catch((error) => {
+							console.error(
+								"[ElevenLabs] Failed to trigger transcript processing",
+								error,
+							);
+						});
 				} catch (error) {
 					console.error(
 						"[ElevenLabs] Failed to trigger transcript processing",
