@@ -39,7 +39,6 @@ export async function POST(request: Request) {
 		const body = await request.json();
 		const userId = body.user_id || session.user.id;
 		const forceRecalculate = body.force_recalculate ?? false;
-		const chartSystem = body.chart_system || "vedic";
 
 		// Get user from MongoDB
 		const users = getUsers();
@@ -104,13 +103,12 @@ export async function POST(request: Request) {
 		const birthLocation = user.birth_location;
 		const birthTimezone = user.birth_timezone || null;
 
-		chartLogger.info("Starting chart calculation", {
+		chartLogger.info("Starting chart calculation (both Vedic and Western)", {
 			userId,
 			julepUserId: user.julep_user_id,
 			birthDate,
 			birthTime,
 			birthLocation,
-			chartSystem,
 		});
 
 		// ANCHOR:chart-task-execution
@@ -126,8 +124,7 @@ export async function POST(request: Request) {
 				birth_time: birthTime,
 				birth_location: birthLocation,
 				birth_timezone: birthTimezone,
-				chart_system: chartSystem,
-				ayanamsha: "lahiri", // Default ayanamsha
+				ayanamsha: "lahiri", // Default ayanamsha for Vedic
 			},
 			{
 				maxAttempts: 60,
@@ -165,13 +162,12 @@ export async function POST(request: Request) {
 			success?: boolean;
 			vedic_chart?: Record<string, unknown>;
 			western_chart?: Record<string, unknown>;
-			chart_system?: string;
 			calculated_at?: string;
 		};
 
-		// Build birth_chart object for user_overview
+		// Build birth_chart object for user_overview (contains both Vedic and Western)
 		const birthChart = {
-			system: taskOutput.chart_system || chartSystem,
+			system: "both" as const, // Always generate both systems
 			vedic: taskOutput.vedic_chart || null,
 			western: taskOutput.western_chart || null,
 			calculated_at: new Date(taskOutput.calculated_at || new Date()),
@@ -200,7 +196,7 @@ export async function POST(request: Request) {
 			success: true,
 			task_id: result.task_id,
 			execution_id: result.id,
-			message: "Chart calculated successfully",
+			message: "Both Vedic and Western charts calculated successfully",
 			chart: birthChart,
 		});
 	} catch (error) {

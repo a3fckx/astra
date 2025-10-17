@@ -125,13 +125,15 @@ export async function POST(request: Request) {
 			const hasChart = updatedUser?.user_overview?.birth_chart;
 
 			if (hasBirthData && !hasChart) {
-				transcriptLogger.info("Triggering chart calculation", { userId });
+				transcriptLogger.info(
+					"Triggering chart calculation (both Vedic and Western)",
+					{ userId },
+				);
 				fetch(`${process.env.NEXT_PUBLIC_APP_URL || ""}/api/tasks/chart`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						user_id: userId,
-						chart_system: "vedic", // Default to vedic, can be updated based on preferences
 					}),
 				}).catch((err) =>
 					transcriptLogger.error("Failed to trigger chart calculation", err),
