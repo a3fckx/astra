@@ -71,8 +71,8 @@ function getZodiacSign(dateOfBirth: string | null): string | null {
  * ANCHOR:elevenlabs-first-message
  *
  * Returns different greetings:
- * - First time (streak 0-1): Zodiac-based intro
- * - Returning user (streak 2+): Welcome back with streak celebration
+ * - First time (streak 0): Magical zodiac-based intro
+ * - Returning user (streak 1+): Welcome back with streak milestones
  */
 export function generateFirstMessage(
 	displayName: string,
@@ -83,22 +83,61 @@ export function generateFirstMessage(
 	const vedicSun = handshake?.session.overview?.vedicSun ?? null;
 	const westernSun = handshake?.session.overview?.westernSun ?? null;
 
-	// Returning user with streak
-	if (streakDays >= 2) {
-		const fireEmoji = streakDays >= 5 ? " 🔥" : "";
-		return `Welcome back, ${displayName}!${fireEmoji} Your ${streakDays}-day streak is inspiring. What cosmic wisdom are you seeking today?`;
+	// FIRST TIME USER (streak = 0) - Create magical zodiac introduction
+	if (streakDays === 0) {
+		const zodiacSign =
+			westernSun || vedicSun || getZodiacSign(dateOfBirth) || null;
+
+		if (zodiacSign) {
+			// Zodiac-specific catchy opening lines (voice-friendly, no emojis)
+			const zodiacIntros: Record<string, string> = {
+				Aries: `Ah, an Aries, ${displayName}! The cosmos has been waiting for your fire. I'm Samay, your guide through the stars.`,
+				Taurus: `A Taurus, ${displayName}! Grounded yet celestial. I'm Samay, here to unveil what the heavens hold for you.`,
+				Gemini: `Gemini energy, ${displayName}! The stars love a curious mind. I'm Samay, your cosmic companion.`,
+				Cancer: `A Cancer soul, ${displayName}! The Moon herself watches over you. I'm Samay, let's explore your celestial path.`,
+				Leo: `Leo, ${displayName}! The Sun's favorite child. I'm Samay, ready to illuminate your cosmic journey.`,
+				Virgo: `A Virgo, ${displayName}! Precise and profound. I'm Samay, here to decode the universe with you.`,
+				Libra: `Libra, ${displayName}! Balance and beauty written in your stars. I'm Samay, your astral guide.`,
+				Scorpio: `Scorpio intensity, ${displayName}! The cosmos recognizes depth. I'm Samay, let's dive into your mysteries.`,
+				Sagittarius: `Sagittarius spirit, ${displayName}! Born for cosmic exploration. I'm Samay, your fellow traveler.`,
+				Capricorn: `Capricorn, ${displayName}! Time and stars align for you. I'm Samay, here to reveal your celestial blueprint.`,
+				Aquarius: `Aquarius, ${displayName}! The universe loves a visionary. I'm Samay, ready to explore your cosmic potential.`,
+				Pisces: `Pisces, ${displayName}! You swim between worlds. I'm Samay, your guide through the celestial waters.`,
+			};
+
+			return (
+				zodiacIntros[zodiacSign] ||
+				`Namaste ${displayName}! I sense the cosmos has brought us together. I'm Samay, your guide through the stars.`
+			);
+		}
+
+		// First time but no zodiac data
+		return `Namaste ${displayName}! The stars have aligned for our meeting. I'm Samay, your cosmic companion. What mysteries shall we explore today?`;
 	}
 
-	// First-time or second-time user - create zodiac intro
-	const zodiacSign =
-		westernSun || vedicSun || getZodiacSign(dateOfBirth) || null;
-
-	if (zodiacSign) {
-		return `Namaste ${displayName}! Ah, a ${zodiacSign}—the stars have been waiting for you. I'm Samay, your cosmic companion. What brings you to the heavens today?`;
+	// RETURNING USER (streak 1+) - Celebrate consistency with catchy lines
+	if (streakDays === 1) {
+		return `Welcome back, ${displayName}! You returned to the stars. I'm delighted. What's calling you today?`;
 	}
 
-	// Fallback if no birth data
-	return `Namaste ${displayName}! I'm Samay, your cosmic companion. How can I guide you through the stars today?`;
+	if (streakDays >= 2 && streakDays <= 4) {
+		return `${displayName}! Your ${streakDays}-day journey through the cosmos continues. What wisdom are we seeking today?`;
+	}
+
+	if (streakDays >= 5 && streakDays <= 9) {
+		return `Look at you, ${displayName}! ${streakDays} days with the stars. This dedication is rare. What brings you back today?`;
+	}
+
+	if (streakDays >= 10 && streakDays <= 29) {
+		return `${displayName}, ${streakDays} days! The universe is taking notice. Your cosmic path is unfolding beautifully. What shall we explore?`;
+	}
+
+	if (streakDays >= 30) {
+		return `${displayName}! A full lunar cycle and beyond, ${streakDays} days! You're becoming one with the cosmos. What revelations await us today?`;
+	}
+
+	// Fallback
+	return `Welcome back, ${displayName}! The stars missed you. What brings you to the cosmos today?`;
 }
 
 /**
