@@ -2,8 +2,6 @@ import { logger } from "@/lib/logger";
 
 const envLogger = logger.child("env");
 
-export const DEFAULT_ELEVENLABS_AGENT_ID = "agent_9501k3xm7f8bfvysgym9sd8e1fdb";
-
 const boolFromEnv = (value: string | undefined, fallback: boolean): boolean => {
 	if (value === undefined) {
 		return fallback;
@@ -73,6 +71,7 @@ export const env = {
 		false,
 	),
 	elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? undefined,
+	elevenLabsAgentId: process.env.ELEVENLABS_AGENT_ID ?? undefined,
 	julepApiKey: process.env.JULEP_API_KEY ?? undefined,
 	astraAgentId: process.env.ASTRA_AGENT_ID ?? undefined,
 	backgroundWorkerAgentId: process.env.BACKGROUND_WORKER_AGENT_ID ?? undefined,
@@ -126,8 +125,8 @@ if (!resolvedGooglePrompt && env.googlePromptRaw) {
 }
 
 if (!process.env.ELEVENLABS_AGENT_ID) {
-	envLogger.info(
-		`ELEVENLABS_AGENT_ID not set. Falling back to default agent ${DEFAULT_ELEVENLABS_AGENT_ID}.`,
+	envLogger.warn(
+		"ELEVENLABS_AGENT_ID not set. ElevenLabs voice features will not work.",
 	);
 }
 
