@@ -9,7 +9,7 @@ repos:
         pass_filenames: false
       - id: validate-yaml
         name: Validate YAML files
-        entry: bash -c 'cd app && bun x js-yaml'
+        entry: bash -c 'cd app && bun x js-yaml "$@"' --
         language: system
         files: ^agents/.*\\.yaml$
         pass_filenames: true
