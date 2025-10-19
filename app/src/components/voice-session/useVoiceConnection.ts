@@ -252,7 +252,7 @@ export function useVoiceConnection({
 			console.info("[ElevenLabs] Session configuration:", {
 				hasPromptOverride: !!agentPrompt,
 				promptLength: agentPrompt?.length ?? 0,
-				firstMessage: agentFirstMessage?.substring(0, 100) + "...",
+				firstMessage: `${agentFirstMessage?.substring(0, 100)}...`,
 				dynamicVariablesKeys: Object.keys(dynamicVariables ?? {}),
 				hasBirthDate: dynamicVariables?.has_birth_date,
 				hasBirthTime: dynamicVariables?.has_birth_time,

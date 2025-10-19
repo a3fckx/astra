@@ -1,7 +1,7 @@
+import type { Collection } from "mongodb";
 import { getBackgroundWorkerAgentId, julepClient } from "@/lib/julep";
 import { logger } from "@/lib/logger";
 import { loadTaskDefinition } from "@/lib/tasks/loader";
-import type { Collection } from "mongodb";
 
 const famousLogger = logger.child("famous-people-finder");
 

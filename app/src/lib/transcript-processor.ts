@@ -522,8 +522,8 @@ export async function processTranscriptConversation({
 	// If we now have complete birth data, trigger chart calculation (fire-and-forget)
 	// This will generate Vedic/Western charts and find famous people born on same date
 	const hasCompleteBirthData =
-		user.date_of_birth && 
-		user.birth_time && 
+		user.date_of_birth &&
+		user.birth_time &&
 		(birthCity || user.birth_city) &&
 		!user.user_overview?.birth_chart;
 
