@@ -160,17 +160,38 @@ export async function POST(request: Request) {
 		// Extract chart data from task output and sync to MongoDB
 		const taskOutput = result.output as {
 			success?: boolean;
-			vedic_chart?: Record<string, unknown>;
-			western_chart?: Record<string, unknown>;
-			calculated_at?: string;
+			birth_chart?: {
+				vedic?: Record<string, unknown>;
+				western?: Record<string, unknown>;
+				famous_people?: Array<Record<string, unknown>>;
+				calculated_at?: string;
+			};
 		};
+
+		const birthChartData = taskOutput.birth_chart;
+
+		if (!birthChartData) {
+			chartLogger.error("Task output missing birth_chart", {
+				userId,
+				output: taskOutput,
+			});
+			return NextResponse.json(
+				{
+					success: false,
+					error: "Invalid task output",
+					message: "Task completed but birth chart data is missing",
+				},
+				{ status: 500 },
+			);
+		}
 
 		// Build birth_chart object for user_overview (contains both Vedic and Western)
 		const birthChart = {
 			system: "both" as const, // Always generate both systems
-			vedic: taskOutput.vedic_chart || null,
-			western: taskOutput.western_chart || null,
-			calculated_at: new Date(taskOutput.calculated_at || new Date()),
+			vedic: birthChartData.vedic || null,
+			western: birthChartData.western || null,
+			famous_people: birthChartData.famous_people || [],
+			calculated_at: new Date(birthChartData.calculated_at || new Date()),
 		};
 
 		// Update MongoDB user_overview.birth_chart

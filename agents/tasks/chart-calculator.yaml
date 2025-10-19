@@ -1,17 +1,14 @@
 name: Calculate Astrology Birth Chart
 description: Generate comprehensive Vedic and Western astrology charts from birth data
+project: astra
 
 input_schema:
   type: object
   required:
-    - julep_user_id
     - birth_date
     - birth_time
     - birth_location
   properties:
-    julep_user_id:
-      type: string
-      description: Julep user ID for tracking
     birth_date:
       type: string
       description: Date of birth in YYYY-MM-DD format
@@ -24,34 +21,41 @@ input_schema:
     birth_timezone:
       type: string
       description: IANA timezone (e.g., "Asia/Kolkata")
-      default: "UTC"
     ayanamsha:
       type: string
-      default: "lahiri"
       description: Ayanamsha for Vedic calculations
 
 main:
   # Prepare input context
   - evaluate:
-      birth_context: $ f"{steps[0].input.birth_date} at {steps[0].input.birth_time} in {steps[0].input.birth_location} ({steps[0].input.birth_timezone or 'UTC'})"
+      birth_context: $ f"{_.birth_date} at {_.birth_time} in {_.birth_location} ({_.birth_timezone or 'UTC'})"
 
   # Generate Vedic chart
   - prompt: |-
       You are a Vedic astrologer. Calculate a complete Vedic birth chart.
       
       Birth Data: {steps[0].output.birth_context}
-      Ayanamsha: {steps[0].input.ayanamsha}
+      Ayanamsha: {_.ayanamsha or "lahiri"}
       
-      Return ONLY valid JSON (no markdown, no explanations) with these fields:
-      - system: "vedic"
-      - sun_sign: string (e.g. "Leo")
-      - moon_sign: string
-      - ascendant: string
-      - planets: array of objects with name, sign, house, degree, nakshatra, retrograde
-      - dasha: object with current_mahadasha, current_antardasha
-      - chart_summary: string (3-4 sentences about personality and life path)
+      CRITICAL: Return ONLY valid JSON (no markdown, no explanations, no code blocks).
+      Start with {{ and end with }}. Do NOT wrap in ```json or ```.
       
-      Use precise astronomical calculations. Be scientifically accurate.
+      Required fields:
+      {{
+        "system": "vedic",
+        "sun_sign": "Leo",
+        "moon_sign": "Pisces",
+        "ascendant": "Gemini",
+        "planets": [
+          {{"name": "Sun", "sign": "Leo", "house": 5, "degree": "23°45'", "nakshatra": "Magha", "retrograde": false}},
+          {{"name": "Moon", "sign": "Pisces", "house": 12, "degree": "15°30'", "nakshatra": "Uttara Bhadrapada", "retrograde": false}}
+        ],
+        "dasha": {{"current_mahadasha": "Venus", "current_antardasha": "Sun", "start_date": "2024-01-01"}},
+        "chart_summary": "3-4 sentences about personality and life path based on planetary positions"
+      }}
+      
+      birth_context = {steps[0].output.birth_context}
+      ayanamsha = {_.ayanamsha or "lahiri"}
     unwrap: true
 
   # Parse Vedic chart
@@ -67,16 +71,29 @@ main:
       
       Birth Data: {steps[0].output.birth_context}
       
-      Return ONLY valid JSON (no markdown, no explanations) with these fields:
-      - system: "western"
-      - sun_sign: string (e.g. "Gemini")
-      - moon_sign: string
-      - rising_sign: string
-      - planets: array of objects with name, sign, house, degree, retrograde
-      - aspects: array of major aspects (conjunction, trine, square, etc.)
-      - chart_summary: string (3-4 sentences about personality)
+      CRITICAL: Return ONLY valid JSON (no markdown, no explanations, no code blocks).
+      Start with {{ and end with }}. Do NOT wrap in ```json or ```.
       
-      Use tropical zodiac and Placidus houses. Be scientifically accurate.
+      Required fields:
+      {{
+        "system": "western",
+        "sun_sign": "Gemini",
+        "moon_sign": "Pisces",
+        "rising_sign": "Leo",
+        "planets": [
+          {{"name": "Sun", "sign": "Gemini", "house": 11, "degree": "25°12'", "retrograde": false}},
+          {{"name": "Moon", "sign": "Pisces", "house": 8, "degree": "15°30'", "retrograde": false}}
+        ],
+        "aspects": [
+          {{"type": "trine", "planets": ["Sun", "Moon"], "orb": "3°"}},
+          {{"type": "square", "planets": ["Mars", "Venus"], "orb": "2°"}}
+        ],
+        "chart_summary": "3-4 sentences about personality based on Western tropical zodiac"
+      }}
+      
+      Use tropical zodiac and Placidus houses.
+      
+      birth_context = {steps[0].output.birth_context}
     unwrap: true
 
   # Parse Western chart
@@ -88,17 +105,22 @@ main:
 
   # Find famous people with same birth date
   - prompt: |-
-      List 5-7 notable people born on {steps[0].input.birth_date} (ignore year, just month and day).
+      List 5-7 notable people born on {_.birth_date} (ignore year, just month and day).
       
       Include diverse types: technologists, artists, poets, leaders, scientists, etc.
       
-      Return ONLY valid JSON array (no markdown) with objects containing:
-      - name: string
-      - category: string (e.g. "Technologist", "Artist", "Poet", "Leader")
-      - known_for: string (brief description, 10-15 words)
-      - birth_year: number
+      CRITICAL: Return ONLY valid JSON array (no markdown, no code blocks).
+      Start with [ and end with ]. Do NOT wrap in ```json or ```.
+      
+      Example format:
+      [
+        {{"name": "Steve Jobs", "category": "Technologist", "known_for": "Co-founder of Apple, revolutionized personal computing", "birth_year": 1955}},
+        {{"name": "Pablo Picasso", "category": "Artist", "known_for": "Spanish painter, founder of Cubism movement", "birth_year": 1881}}
+      ]
       
       Be factually accurate. Use real historical figures.
+      
+      birth_date = {_.birth_date}
     unwrap: true
 
   # Parse famous people
@@ -110,7 +132,6 @@ main:
 
   # Return complete chart data
   - return:
-      julep_user_id: $ steps[0].input.julep_user_id
       success: true
       birth_chart:
         vedic: $ steps[3].output.vedic_chart

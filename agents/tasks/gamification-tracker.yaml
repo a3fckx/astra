@@ -1,4 +1,10 @@
-name: Update Gamification Metrics
+# DEPRECATED: This task is not used.
+# Gamification metrics are calculated directly in MongoDB for better performance.
+# See: app/src/app/api/tasks/gamification/route.ts
+#
+# This file is kept for reference but should not be executed.
+
+name: Update Gamification Metrics (DEPRECATED)
 description: Track user engagement metrics, streaks, milestones, and progress
 project: astra
 

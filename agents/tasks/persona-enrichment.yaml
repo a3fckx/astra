@@ -26,10 +26,9 @@ main:
     then:
       - return:
           success: false
-          message: $ f"Need at least 5 conversations for analysis. Currently: {_.conversation_count}"
+          message: "Need at least 5 conversations for analysis"
           skipped: true
-    else:
-      - continue: null
+          conversation_count: $ _.conversation_count
 
   # Analyze conversation patterns
   - prompt: |-

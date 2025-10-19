@@ -1,15 +1,12 @@
 name: Find Famous People Born on Same Date
 description: Find notable figures born on the same month/day to create engagement and predict personality patterns
+project: astra
 
 input_schema:
   type: object
   required:
-    - julep_user_id
     - birth_date
   properties:
-    julep_user_id:
-      type: string
-      description: Julep user ID for tracking
     birth_date:
       type: string
       description: Date of birth in YYYY-MM-DD format (we only use month and day)
@@ -17,8 +14,8 @@ input_schema:
 main:
   # Extract month and day for matching
   - evaluate:
-      birth_month_day: $ f"{steps[0].input.birth_date[5:7]}-{steps[0].input.birth_date[8:10]}"
-      display_date: $ f"{steps[0].input.birth_date[5:7]}/{steps[0].input.birth_date[8:10]}"
+      birth_month_day: $ f"{_.birth_date[5:7]}-{_.birth_date[8:10]}"
+      display_date: $ f"{_.birth_date[5:7]}/{_.birth_date[8:10]}"
 
   # Find famous people born on same date
   - prompt: |-
@@ -36,15 +33,19 @@ main:
       
       This helps us predict the user's "animal spirit" - what type of energy they embody.
       
-      Return ONLY valid JSON array (no markdown) with objects:
-      - name: string (full name)
-      - category: string (one of the types above)
-      - known_for: string (what made them famous, 10-15 words)
-      - birth_year: number
-      - personality_trait: string (one word: "innovative", "creative", "driven", "analytical", etc.)
+      CRITICAL: Return ONLY valid JSON array (no markdown, no code blocks).
+      Start with [ and end with ]. Do NOT wrap in ```json or ```.
+      
+      Example format:
+      [
+        {{"name": "Steve Jobs", "category": "Technologist", "known_for": "Co-founder of Apple, revolutionized personal computing", "birth_year": 1955, "personality_trait": "innovative"}},
+        {{"name": "Pablo Picasso", "category": "Artist", "known_for": "Spanish painter, founder of Cubism movement", "birth_year": 1881, "personality_trait": "creative"}}
+      ]
       
       Be factually accurate. Real historical/contemporary figures only.
       Focus on successful, positive figures who show different life paths.
+      
+      display_date = {steps[0].output.display_date}
     unwrap: true
 
   # Parse famous people
@@ -65,14 +66,22 @@ main:
       - What "animal spirit" does this date embody?
       - What paths do people born on this date tend to take?
       
-      Return ONLY valid JSON (no markdown) with:
-      - dominant_categories: array of top 2-3 categories
-      - common_traits: array of 3-4 personality traits
-      - animal_spirit: string (e.g., "The Innovator", "The Creator", "The Warrior")
-      - life_path_prediction: string (2-3 sentences about what this person might become)
-      - energy_description: string (describe the cosmic energy of this date, 2-3 sentences)
+      CRITICAL: Return ONLY valid JSON (no markdown, no code blocks).
+      Start with {{ and end with }}. Do NOT wrap in ```json or ```.
+      
+      Required format:
+      {{
+        "dominant_categories": ["Technologist", "Artist"],
+        "common_traits": ["innovative", "creative", "driven", "visionary"],
+        "animal_spirit": "The Innovator",
+        "life_path_prediction": "2-3 sentences about what this person might become based on patterns",
+        "energy_description": "Describe the cosmic energy of this date in 2-3 mystical sentences"
+      }}
       
       Make it mystical and intriguing.
+      
+      display_date = {steps[0].output.display_date}
+      famous_people = {steps[3].output.famous_people}
     unwrap: true
 
   # Parse personality analysis
@@ -84,9 +93,8 @@ main:
 
   # Return complete famous people data
   - return:
-      julep_user_id: $ steps[0].input.julep_user_id
       success: true
-      birth_date: $ steps[0].input.birth_date
+      birth_date: $ _.birth_date
       famous_people: $ steps[3].output.famous_people
       personality_analysis: $ steps[6].output.personality_analysis
       calculated_at: $ datetime.now().isoformat()
