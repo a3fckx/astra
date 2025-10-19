@@ -541,7 +541,6 @@ export async function processTranscriptConversation({
 				agentId,
 				chartTaskDef,
 				{
-					julep_user_id: user.julep_user_id,
 					birth_date: user.date_of_birth?.toISOString().split("T")[0],
 					birth_time: user.birth_time,
 					birth_location: birthCity || user.birth_city || "Unknown",
