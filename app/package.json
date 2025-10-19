@@ -9,6 +9,8 @@
     "lint": "biome check --fix src",
     "type-check": "biome check",
     "sync:agents": "bun run scripts/sync-agents.ts",
+    "sync:users": "bun run scripts/sync-existing-users.ts",
+    "sync:users:dry-run": "bun run scripts/sync-existing-users.ts --dry-run",
     "inspect:julep": "bun run scripts/julep-inspect.ts",
     "set:memory-token": "bun run scripts/set-memory-token.ts",
     "test": "bun --env-file=.env test",
