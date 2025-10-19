@@ -81,18 +81,25 @@ export function generateFirstMessage(
 	handshake: SessionHandshake | null,
 ): string {
 	// PRIORITY 1: Use stored first_message from MongoDB (updated by background agents)
-	const storedFirstMessage = handshake?.session.overview?.firstMessage;
+	const storedFirstMessage = handshake?.session.overview?.first_message;
 	if (storedFirstMessage && storedFirstMessage.trim().length > 0) {
-		// Replace {{user_name}} placeholder with actual display name
-		return storedFirstMessage.replace(/\{\{user_name\}\}/g, displayName);
+		// Replace {{user_name}} or [USERNAME] placeholder with actual display name
+		return storedFirstMessage
+			.replace(/\{\{user_name\}\}/g, displayName)
+			.replace(/\[USERNAME\]/g, displayName);
 	}
 
 	// PRIORITY 2: Fallback to streak/zodiac-based generation
-	const streakDays = handshake?.session.overview?.streakDays ?? 0;
+	const streakDays =
+		handshake?.session.overview?.gamification?.streak_days ?? 0;
 	const dateOfBirth = handshake?.session.user.dateOfBirth ?? null;
-	const vedicSun = handshake?.session.overview?.vedicSun ?? null;
-	const westernSun = handshake?.session.overview?.westernSun ?? null;
-	const incidentMap = handshake?.session.overview?.incidentMap ?? [];
+	const vedicSun = (
+		handshake?.session.overview?.birth_chart?.vedic as Record<string, unknown>
+	)?.sun_sign as string | null;
+	const westernSun = (
+		handshake?.session.overview?.birth_chart?.western as Record<string, unknown>
+	)?.sun_sign as string | null;
+	const incidentMap = handshake?.session.overview?.incident_map ?? [];
 
 	const latestIncidentDescription = incidentMap.length
 		? (incidentMap[incidentMap.length - 1]?.description ?? null)
@@ -175,7 +182,7 @@ export function generateFirstMessage(
  * ANCHOR:dynamic-session-variables
  * These fields must stay aligned with app/docs/responder.md
  *
- * Strategy: Pass user_overview JSON for full context; expose boolean flags for missing birth details.
+ * Strategy: Pass complete user_overview JSON for full context; expose quick access fields and boolean flags.
  */
 export function buildDynamicVariables(
 	handshake: SessionHandshake,
@@ -183,6 +190,9 @@ export function buildDynamicVariables(
 	workflowId: string,
 ): Record<string, string | number | boolean> | undefined {
 	const overview = handshake.session.overview;
+
+	// Calculate today's date for horoscope check
+	const today = new Date().toISOString().split("T")[0];
 
 	return sanitizeDynamicVariables({
 		// Core identity
@@ -192,23 +202,41 @@ export function buildDynamicVariables(
 		workflow_id: handshake.session.workflowId ?? workflowId,
 		julep_session_id: handshake.session.julep?.sessionId,
 
-		// User overview JSON (contains ALL user data: preferences, chart, incidents, etc.)
+		// ANCHOR:complete-user-overview-json
+		// Pass complete user_overview as JSON string
+		// Agent can access all fields: preferences, gamification, chart, horoscope, etc.
 		user_overview: overview ? JSON.stringify(overview) : null,
 
-		// Quick access fields (for convenience in prompt interpolation)
-		streak_days: overview?.streakDays ?? 0,
-		profile_summary: overview?.profileSummary ?? null,
+		// Quick access fields (backward compatibility + convenience)
+		streak_days: overview?.gamification?.streak_days ?? 0,
+		profile_summary: overview?.profile_summary ?? null,
 
-		// Chart quick access (if available)
-		vedic_sun: overview?.vedicSun ?? null,
-		vedic_moon: overview?.vedicMoon ?? null,
-		western_sun: overview?.westernSun ?? null,
+		// Chart quick access
+		vedic_sun: (overview?.birth_chart?.vedic as Record<string, unknown>)
+			?.sun_sign as string | null,
+		vedic_moon: (overview?.birth_chart?.vedic as Record<string, unknown>)
+			?.moon_sign as string | null,
+		western_sun: (overview?.birth_chart?.western as Record<string, unknown>)
+			?.sun_sign as string | null,
+
+		// Preferences quick access
+		hinglish_level: overview?.preferences?.hinglish_level ?? null,
+		flirt_opt_in: overview?.preferences?.flirt_opt_in ?? false,
+		communication_style: overview?.preferences?.communication_style ?? null,
+
+		// Horoscope quick access
+		has_todays_horoscope: overview?.latest_horoscope?.date === today,
+
+		// Gamification quick access
+		total_conversations: overview?.gamification?.total_conversations ?? 0,
+		milestones_count: overview?.gamification?.milestones_unlocked?.length ?? 0,
 
 		// ANCHOR:birth-data-flags
 		// Birth data availability flags for conditional prompting
 		has_birth_date: !!handshake.session.user.dateOfBirth,
 		has_birth_time: !!handshake.session.user.birthTime,
 		has_birth_place: !!handshake.session.user.birthPlace,
+		has_birth_chart: !!overview?.birth_chart,
 	});
 }
 

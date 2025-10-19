@@ -119,12 +119,17 @@ export async function GET(request: Request) {
 		});
 	}
 
-	// Extract key data from user_overview for session context
-	const userOverview = user.user_overview;
-	const streakDays = userOverview?.gamification?.streak_days ?? 0;
-	const birthChart = userOverview?.birth_chart;
-	const firstMessage = userOverview?.first_message ?? null;
-	const incidentMap = userOverview?.incident_map ?? null;
+	// ANCHOR:complete-user-overview-passthrough
+	// Pass complete user_overview to ElevenLabs agent for full context
+	// All background task results are now available to the agent:
+	// - preferences (communication style, topics, Hinglish level)
+	// - birth_chart (Vedic/Western charts, famous people)
+	// - gamification (streaks, milestones, topics explored)
+	// - latest_horoscope (today's personalized horoscope)
+	// - recent_conversations (conversation summaries)
+	// - incident_map (notable moments)
+	// - insights (AI-generated insights)
+	const userOverview = user.user_overview || {};
 
 	return NextResponse.json({
 		session: {
@@ -143,15 +148,8 @@ export async function GET(request: Request) {
 				birthTime: user.birth_time ?? null,
 				birthPlace: user.birth_location ?? null,
 			},
-			overview: {
-				streakDays: streakDays,
-				profileSummary: userOverview?.profile_summary ?? null,
-				firstMessage: firstMessage,
-				vedicSun: birthChart?.vedic?.sun_sign ?? null,
-				vedicMoon: birthChart?.vedic?.moon_sign ?? null,
-				westernSun: birthChart?.western?.sun_sign ?? null,
-				incidentMap: incidentMap,
-			},
+			// Pass complete user_overview (includes all fields from background tasks)
+			overview: userOverview,
 		},
 		integrations,
 		prompt: responderPrompt,
