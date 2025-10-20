@@ -190,13 +190,65 @@ export function buildDynamicVariables(
 	workflowId: string,
 ): Record<string, string | number | boolean> | undefined {
 	const overview = handshake.session.overview;
+	const user = handshake.session.user;
 
 	// Calculate today's date for horoscope check
 	const today = new Date().toISOString().split("T")[0];
 
+	// ANCHOR:birth-time-detection
+	// Check if birth time was mentioned in recent conversations
+	// Helps agent remember user provided data before background processing completes
+	const recentConversations = overview?.recent_conversations ?? [];
+	const birthTimeInConversations = recentConversations.some((conv: unknown) => {
+		const convRecord = conv as Record<string, unknown>;
+		const summary =
+			typeof convRecord?.summary === "string"
+				? convRecord.summary.toLowerCase()
+				: "";
+		const topics = Array.isArray(convRecord?.topics)
+			? (convRecord.topics as string[]).join(" ").toLowerCase()
+			: "";
+		return (
+			summary.includes("birth time") ||
+			summary.includes("7:15") ||
+			summary.includes("7.15") ||
+			topics.includes("birth time")
+		);
+	});
+
+	// Chart status detection
+	const hasVedicChart = !!(overview?.birth_chart?.vedic as Record<
+		string,
+		unknown
+	>);
+	const hasWesternChart = !!(overview?.birth_chart?.western as Record<
+		string,
+		unknown
+	>);
+	const hasFamousPeople = !!(
+		(overview?.birth_chart?.famous_people as unknown[]) || []
+	).length;
+
+	let chartStatus = "none";
+	if (hasVedicChart && hasWesternChart) {
+		chartStatus = "ready";
+	} else if (user.dateOfBirth && user.birthTime && user.birthPlace) {
+		chartStatus = "pending";
+	}
+
+	// Extract specific chart details for agent use
+	const vedicChart = overview?.birth_chart?.vedic as Record<string, unknown>;
+	const westernChart = overview?.birth_chart?.western as Record<
+		string,
+		unknown
+	>;
+
 	return sanitizeDynamicVariables({
 		// Core identity
 		user_name: userDisplayName,
+		date_of_birth: user.dateOfBirth,
+		birth_time: user.birthTime,
+		birth_place: user.birthPlace,
 
 		// Session IDs
 		workflow_id: handshake.session.workflowId ?? workflowId,
@@ -211,13 +263,24 @@ export function buildDynamicVariables(
 		streak_days: overview?.gamification?.streak_days ?? 0,
 		profile_summary: overview?.profile_summary ?? null,
 
+		// ANCHOR:chart-availability-and-status
+		// Chart data and status flags for conversation steering
+		chart_status: chartStatus,
+		has_birth_chart: hasVedicChart || hasWesternChart,
+		has_vedic_chart: hasVedicChart,
+		has_western_chart: hasWesternChart,
+		has_famous_people: hasFamousPeople,
+		famous_people_count: (
+			(overview?.birth_chart?.famous_people as unknown[]) || []
+		).length,
+
 		// Chart quick access
-		vedic_sun: (overview?.birth_chart?.vedic as Record<string, unknown>)
-			?.sun_sign as string | null,
-		vedic_moon: (overview?.birth_chart?.vedic as Record<string, unknown>)
-			?.moon_sign as string | null,
-		western_sun: (overview?.birth_chart?.western as Record<string, unknown>)
-			?.sun_sign as string | null,
+		vedic_sun: vedicChart?.sun_sign as string | null,
+		vedic_moon: vedicChart?.moon_sign as string | null,
+		vedic_ascendant: vedicChart?.ascendant as string | null,
+		western_sun: westernChart?.sun_sign as string | null,
+		western_moon: westernChart?.moon_sign as string | null,
+		western_rising: westernChart?.rising_sign as string | null,
 
 		// Preferences quick access
 		hinglish_level: overview?.preferences?.hinglish_level ?? null,
@@ -233,10 +296,16 @@ export function buildDynamicVariables(
 
 		// ANCHOR:birth-data-flags
 		// Birth data availability flags for conditional prompting
-		has_birth_date: !!handshake.session.user.dateOfBirth,
-		has_birth_time: !!handshake.session.user.birthTime,
-		has_birth_place: !!handshake.session.user.birthPlace,
-		has_birth_chart: !!overview?.birth_chart,
+		has_birth_date: !!user.dateOfBirth,
+		has_birth_time: !!user.birthTime,
+		has_birth_place: !!user.birthPlace,
+		birth_time_in_recent_conversations: birthTimeInConversations,
+
+		// ANCHOR:engagement-metrics
+		// Content availability for steering conversation
+		incident_count: (overview?.incident_map || []).length,
+		insights_count: (overview?.insights || []).length,
+		recent_conversations_count: recentConversations.length,
 	});
 }
 
