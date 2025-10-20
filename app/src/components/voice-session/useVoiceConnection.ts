@@ -77,11 +77,11 @@ export function useVoiceConnection({
 
 				if (farewellPatterns.some((pattern) => pattern.test(trimmed))) {
 					console.info(
-						"[ElevenLabs] Agent farewell detected, auto-disconnecting in 5s",
+						"[ElevenLabs] Agent farewell detected, auto-disconnecting in 8s",
 					);
 					setTimeout(() => {
 						void endSessionRef.current();
-					}, 5000); // 5s delay for graceful ending - allows agent to fully complete speaking
+					}, 8000); // 8s delay for graceful ending - ensures full farewell message is heard including any follow-up
 				}
 			} else if (source === "user") {
 				console.info("[ElevenLabs] User transcript:", trimmed);
