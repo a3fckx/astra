@@ -1,0 +1,79 @@
+name: Persona Enrichment Analysis
+description: Analyze conversation patterns to refine user preferences and communication style
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - recent_conversations
+  properties:
+    recent_conversations:
+      type: array
+      items:
+        type: object
+      description: Last 10-20 conversation summaries from MongoDB
+    existing_preferences:
+      type: object
+      description: Current user preferences to update
+
+main:
+  # Check if we have enough data
+  - evaluate:
+      conversation_count: $ len(_.recent_conversations)
+      has_enough_data: $ _.conversation_count >= 5
+
+  - if: $ not _.has_enough_data
+    then:
+      - return:
+          success: false
+          message: "Need at least 5 conversations for analysis"
+          skipped: true
+          conversation_count: $ _.conversation_count
+
+  # Analyze conversation patterns
+  - prompt: |-
+      Analyze these conversation summaries to understand the user's patterns and preferences.
+
+      CONVERSATIONS ({conversation_count}):
+      {"\n---\n".join([f"Topics: {conv.get('topics', [])}\nTone: {conv.get('emotional_tone', 'neutral')}\nSummary: {conv.get('summary', '')[:200]}" for conv in recent_conversations[:10]])}
+
+      CURRENT PREFERENCES:
+      {existing_preferences if existing_preferences else "None set yet"}
+
+      ANALYZE AND RETURN JSON:
+      {{
+        "communication_style": "casual|balanced|formal",
+        "topics_of_interest": ["most frequent topics"],
+        "hinglish_level": 0-100,
+        "emotional_patterns": ["curious", "anxious", "optimistic", etc.],
+        "response_preference": "concise|moderate|detailed",
+        "engagement_triggers": ["what topics get most engagement"],
+        "time_patterns": "morning person|night owl|flexible|null",
+        "insights": [
+          "User responds best to...",
+          "Shows most interest in...",
+          "Communication improves when..."
+        ]
+      }}
+
+      RULES:
+      1. Look for PATTERNS across multiple conversations
+      2. Detect Hinglish usage frequency (0=none, 50=balanced, 100=heavy)
+      3. Identify recurring topics and questions
+      4. Note emotional tone trends
+      5. Return ONLY valid JSON
+
+      conversation_count = {_.conversation_count}
+      recent_conversations = {_.recent_conversations}
+      existing_preferences = {_.existing_preferences}
+    unwrap: true
+
+  # Parse and return enriched preferences
+  - evaluate:
+      enriched_preferences: $ json.loads(steps[2].output)
+
+  - return:
+      success: true
+      preferences_update: $ _.enriched_preferences
+      conversations_analyzed: $ _.conversation_count
+      generated_at: $ datetime.now().isoformat()

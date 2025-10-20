@@ -1,0 +1,140 @@
+name: Calculate Astrology Birth Chart
+description: Generate comprehensive Vedic and Western astrology charts from birth data
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - birth_date
+    - birth_time
+    - birth_location
+  properties:
+    birth_date:
+      type: string
+      description: Date of birth in YYYY-MM-DD format
+    birth_time:
+      type: string
+      description: Birth time in HH:MM 24-hour format
+    birth_location:
+      type: string
+      description: Birth location as "City, Country"
+    birth_timezone:
+      type: string
+      description: IANA timezone (e.g., "Asia/Kolkata")
+    ayanamsha:
+      type: string
+      description: Ayanamsha for Vedic calculations
+
+main:
+  # Prepare input context
+  - evaluate:
+      birth_context: $ f"{_.birth_date} at {_.birth_time} in {_.birth_location} ({_.birth_timezone or 'UTC'})"
+
+  # Generate Vedic chart
+  - prompt: |-
+      You are a Vedic astrologer. Calculate a complete Vedic birth chart.
+      
+      Birth Data: {steps[0].output.birth_context}
+      Ayanamsha: {_.ayanamsha or "lahiri"}
+      
+      CRITICAL: Return ONLY valid JSON (no markdown, no explanations, no code blocks).
+      Start with {{ and end with }}. Do NOT wrap in ```json or ```.
+      
+      Required fields:
+      {{
+        "system": "vedic",
+        "sun_sign": "Leo",
+        "moon_sign": "Pisces",
+        "ascendant": "Gemini",
+        "planets": [
+          {{"name": "Sun", "sign": "Leo", "house": 5, "degree": "23°45'", "nakshatra": "Magha", "retrograde": false}},
+          {{"name": "Moon", "sign": "Pisces", "house": 12, "degree": "15°30'", "nakshatra": "Uttara Bhadrapada", "retrograde": false}}
+        ],
+        "dasha": {{"current_mahadasha": "Venus", "current_antardasha": "Sun", "start_date": "2024-01-01"}},
+        "chart_summary": "3-4 sentences about personality and life path based on planetary positions"
+      }}
+      
+      birth_context = {steps[0].output.birth_context}
+      ayanamsha = {_.ayanamsha or "lahiri"}
+    unwrap: true
+
+  # Parse Vedic chart
+  - evaluate:
+      vedic_chart_cleaned: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      vedic_chart: $ json.loads(steps[2].output.vedic_chart_cleaned)
+
+  # Generate Western chart
+  - prompt: |-
+      You are a Western astrologer. Calculate a complete Western birth chart.
+      
+      Birth Data: {steps[0].output.birth_context}
+      
+      CRITICAL: Return ONLY valid JSON (no markdown, no explanations, no code blocks).
+      Start with {{ and end with }}. Do NOT wrap in ```json or ```.
+      
+      Required fields:
+      {{
+        "system": "western",
+        "sun_sign": "Gemini",
+        "moon_sign": "Pisces",
+        "rising_sign": "Leo",
+        "planets": [
+          {{"name": "Sun", "sign": "Gemini", "house": 11, "degree": "25°12'", "retrograde": false}},
+          {{"name": "Moon", "sign": "Pisces", "house": 8, "degree": "15°30'", "retrograde": false}}
+        ],
+        "aspects": [
+          {{"type": "trine", "planets": ["Sun", "Moon"], "orb": "3°"}},
+          {{"type": "square", "planets": ["Mars", "Venus"], "orb": "2°"}}
+        ],
+        "chart_summary": "3-4 sentences about personality based on Western tropical zodiac"
+      }}
+      
+      Use tropical zodiac and Placidus houses.
+      
+      birth_context = {steps[0].output.birth_context}
+    unwrap: true
+
+  # Parse Western chart
+  - evaluate:
+      western_chart_cleaned: $ steps[4].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      western_chart: $ json.loads(steps[5].output.western_chart_cleaned)
+
+  # Find famous people with same birth date
+  - prompt: |-
+      List 5-7 notable people born on {_.birth_date} (ignore year, just month and day).
+      
+      Include diverse types: technologists, artists, poets, leaders, scientists, etc.
+      
+      CRITICAL: Return ONLY valid JSON array (no markdown, no code blocks).
+      Start with [ and end with ]. Do NOT wrap in ```json or ```.
+      
+      Example format:
+      [
+        {{"name": "Steve Jobs", "category": "Technologist", "known_for": "Co-founder of Apple, revolutionized personal computing", "birth_year": 1955}},
+        {{"name": "Pablo Picasso", "category": "Artist", "known_for": "Spanish painter, founder of Cubism movement", "birth_year": 1881}}
+      ]
+      
+      Be factually accurate. Use real historical figures.
+      
+      birth_date = {_.birth_date}
+    unwrap: true
+
+  # Parse famous people
+  - evaluate:
+      famous_people_cleaned: $ steps[7].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      famous_people: $ json.loads(steps[8].output.famous_people_cleaned)
+
+  # Return complete chart data
+  - return:
+      success: true
+      birth_chart:
+        vedic: $ steps[3].output.vedic_chart
+        western: $ steps[6].output.western_chart
+        famous_people: $ steps[9].output.famous_people
+        calculated_at: $ datetime.now().isoformat()

@@ -1,427 +1,424 @@
-# AGENTS.md - Agent Directives for Astra
+# AGENTS.md — Astra Coding Agent Directive
 
-> **Note:** This is a directive document for AI coding agents. For detailed technical documentation, see **[docs/](docs/)** folder.
+> **Note:** This file is the operational brief for AI coding agents. For in-depth technical docs, see the [`docs/`](docs) directory.
+
+---
+
+## ⚠️ CRITICAL ARCHITECTURE UPDATE
+
+**READ THIS FIRST:** The architecture has been clarified and corrected. Key changes:
+
+### Corrected Architecture (Current)
+
+- **ElevenLabs Agents = Frontline:** Handle ALL real-time user conversations (voice/chat)
+- **Julep Agents = Background ONLY:** Process transcripts, generate charts, track metrics — NEVER interact with users
+- **MongoDB = Source of Truth:** All data stored in MongoDB, especially `user_overview` field
+- **Data Flow:** User talks → ElevenLabs (with MongoDB context) → Background processing → Results to MongoDB → Next conversation
+
+**Julep agents NEVER talk to users. They only run background tasks and return JSON that syncs to MongoDB.**
+
+### Key Documents (Priority Order)
+- 🔴 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **START HERE:** Complete system architecture
+- 🔴 [`docs/IMPLEMENTATION_CHECKLIST.md`](docs/IMPLEMENTATION_CHECKLIST.md) — **Development progress tracker**
+- [`docs/FAQ.md`](docs/FAQ.md) — Common questions answered
+- [`docs/PERSONA.md`](docs/PERSONA.md) — Samay persona details
+- [`agents/README.md`](agents/README.md) — Agent definitions and task workflows
 
 ---
 
 ## Quick Reference
 
-**Project:** Astra - Multi-user astrology conversational AI agent (Jadugar)
+- **Project:** Astra — multi-user astrology companion ("Samay" persona)
+- **Voice Interface:** ElevenLabs React SDK (`@elevenlabs/react`)
+- **Authentication:** Better Auth + Google OAuth + MongoDB Atlas
+- **Orchestration:** Julep (user memory, sessions, agent tasks)
+- **UI Stack:** Next.js 15 (App Router), React 18, TypeScript, Biome
+- **Runtime:** Single Next.js service — no background workers
 
-**Architecture:** Next.js + Better Auth SPA with Julep-managed agents (legacy FastAPI monolith kept for reference only)
+### Current Layout
 
-**Full-Stack Technology:**
-- **Backend:** Python 3.8+, FastAPI, MongoDB Atlas, ElevenLabs Conversational AI, Google OAuth
-- **Frontend:** Next.js 14, React 18, TypeScript, Better Auth
-- **Code Quality:** Ruff + Pyre (Python), Biome (TypeScript) - 10-100x faster than traditional tools
-
-**Monolith Structure (legacy – decommission as Julep rolls out):**
 ```
 astra/
-├── backend/                  # Python FastAPI monolith (95% of logic)
-│   ├── app/                 # Application code
-│   ├── scripts/             # Standalone scripts
-│   └── tests/               # Tests
-├── app/                      # Next.js app (Better Auth + control center UI)
-├── shared/                   # Shared resources (prompts, config)
-└── docs/                     # Documentation
+├── app/                    # Next.js application
+│   ├── src/components/     # Voice UI (ElevenLabs SDK)
+│   ├── src/app/api/        # REST APIs (auth, session, task triggers)
+│   ├── src/lib/            # Utilities (auth, mongo, julep, elevenlabs)
+│   └── scripts/            # Task execution utilities
+├── agents/                 # Julep agent & task definitions (YAML)
+│   ├── definitions/        # Agent definitions (background worker only)
+│   └── tasks/              # Task workflows (transcript, chart, gamification, etc.)
+└── docs/                   # Architecture & implementation docs
 ```
 
-**Key Files:**
-- `backend/app/main.py` - FastAPI application entry point (legacy)
-- `backend/app/config.py` - Configuration management (env vars + JSON, legacy)
-- `backend/app/services/google_auth.py` - OAuth service (legacy)
-- `backend/scripts/agent_runner.py` - WebSocket agent runner (legacy)
-- `backend/app/buffer/memory_buffer.json` - User context storage (legacy)
-- `app/src/lib/auth.ts` - Better Auth configuration (Mongo-backed)
-- `app/src/app/api/responder/messages/route.ts` - REST ingress for responder prompts
-- `app/src/pages/api/responder/socket.ts` - WebSocket bridge streaming responder events
-- `app/src/app/dashboard/page.tsx` - Authenticated responder console
+**Key Files**
 
-**Responder data flow:**
-- `responder_outbox` (Mongo collection) stores pending user prompts emitted by the Next.js API; Python workers consume and mark them delivered.
-- `responder_events` captures assistant/system messages; the WebSocket route streams change events from this collection back to the dashboard.
-- `shared/prompts/responder.md` - Jadugar persona prompt
-- `shared/config/defaults.json` - Configuration defaults
-
-**Documentation:**
-- 📘 [docs/COMPONENTS.md](docs/COMPONENTS.md) - Component technical reference
-- 👤 [docs/PERSONA.md](docs/PERSONA.md) - Jadugar persona specifications
-- 💾 [docs/MEMORY_BUFFER.md](docs/MEMORY_BUFFER.md) - Memory buffer field reference
-- 🔄 [docs/WORKFLOWS.md](docs/WORKFLOWS.md) - Process flows and sequences
-- 🏗️ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture overview
-- 🔄 [docs/MIGRATION.md](docs/MIGRATION.md) - Migration guide (old → new structure)
-- 📝 [docs/SESSION_TRACKING.md](docs/SESSION_TRACKING.md) - Session tracking system
+- `app/src/components/voice-session.tsx` — Voice UI using ElevenLabs `useConversation` hook
+- `app/src/app/api/responder/session/route.ts` — Session handshake (returns user_overview from MongoDB)
+- `app/src/app/api/tasks/transcript/route.ts` — Triggers transcript processing, syncs to MongoDB
+- `app/src/lib/auth.ts` — Better Auth config (MongoDB adapter + Google scopes)
+- `app/src/lib/mongo.ts` — MongoDB schema including `user_overview` field
+- `app/src/lib/elevenlabs-api.ts` — ElevenLabs API client (fetch transcripts)
+- `agents/definitions/astra.yaml` — Background Worker Agent (Julep, never user-facing)
+- `agents/tasks/` — YAML task workflows (transcript, chart, gamification, reports)
+- `.pre-commit-config.yaml` — YAML validation + syncs `AGENTS.md` to `Claude.md`
 
 ---
 
-## Julep Orchestration (In Flight)
+## How Julep Integration Works (SDK-Based)
 
-- **Project scope:** Use the pre-created Julep project named `astra` for all agents, users, tasks, and docs. Always pass `project="astra"` (or the project ID) when creating resources so they stay isolated.
-- **Credentials:** Keep `JULEP_API_KEY` in `app/.env`; never commit it. Mirror runtime secrets (e.g., `elevenlabs_api_key`, `elevenlabs_voice_id`, external astrology APIs) inside Julep Secrets so workflows can reference them securely.
-- **User provisioning:** After Better Auth signup, call `client.users.create(project="astra")`, then immediately create baseline user docs via `client.users.docs.create`. Seed at least `type=profile` and `type=preferences` entries with metadata keys like `scope`, `updated_by`, `timestamp_iso`, and optional tags.
-- **Memory model:** Treat user docs as the per-user memory surface. Use metadata filters (`scope=frontline|background`, `type=horoscope|notes|profile`) to control recall. Reserve agent docs for global context that multiple agents share.
-- **Realtime chat:** The Next.js responder route should open Julep sessions with `recall=true` and the user’s Julep ID. Stream assistant deltas over WebSocket to ElevenLabs (API key + voice ID only) for TTS playback, then write short conversation summaries back into the user doc.
-- **Background agents:** Define durable workflows (Julep Tasks) for horoscope refresh, persona enrichment, etc. Each task writes to the same user docs and can call MCP integrations or system tools to mutate memory safely.
-- **External models:** You can run agents on non-OpenAI providers by configuring LiteLLM or integration tools in Julep and supplying their API keys as secrets. Reference those providers in `model` or tool definitions to keep responses sourced from your chosen vendor.
-- **Documentation refs:** Core reads live in `documentation/concepts/agents.mdx`, `documentation/concepts/docs.mdx`, `documentation/concepts/sessions.mdx`, `documentation/concepts/secrets.mdx`, and `documentation/integrations/extensibility/mcp.mdx`.
+**CRITICAL:** Astra uses the **Julep Node.js SDK** programmatically, NOT Julep CLI or `julep.yaml` deployment.
+
+### Agent Setup (One-Time)
+
+1. **Create Agent via Julep API** (or dashboard):
+   ```typescript
+   const agent = await julepClient.agents.create({
+     name: "Astra Background Worker",
+     model: "gemini-2.5-flash",
+     project: "astra",
+     about: "Background processing agent...",
+     instructions: "..."
+   });
+   // Returns: { id: "agent_abc123" }
+   ```
+
+2. **Store Agent ID in Environment:**
+   ```bash
+   BACKGROUND_WORKER_AGENT_ID=agent_abc123
+   ```
+
+3. **Reference Document:** `agents/definitions/astra.yaml`
+   - Documents the agent configuration
+   - NOT used for deployment (no `julep deploy`)
+   - Useful for reference and manual updates
+
+### Task Execution (Runtime - Every Request)
+
+**Tasks are created dynamically from YAML and executed on-demand:**
+
+```typescript
+// 1. Load task definition from YAML
+const taskDef = loadTaskDefinition('TRANSCRIPT_PROCESSOR');
+// Reads: agents/tasks/transcript-processor.yaml
+
+// 2. Create task instance for this execution
+const task = await julepClient.createTask(agentId, taskDef);
+// Returns: { id: "task_xyz789" }
+
+// 3. Execute with user-specific input
+const execution = await julepClient.executeTask(task.id, {
+  input: {
+    julep_user_id: user.julep_user_id,
+    conversation_id: "conv_123",
+    transcript_text: "full transcript...",
+    existing_overview: user.user_overview
+  }
+});
+
+// 4. SDK polls every 2s until completion
+// Returns: { status: "succeeded", output: {...} }
+
+// 5. Sync result to MongoDB
+await users.updateOne(
+  { id: userId },
+  { $set: { user_overview: execution.output }}
+);
+```
+
+### Key Files for SDK Integration
+
+- **SDK Wrapper:** `app/src/lib/julep-client.ts`
+  - `JulepClient` class wraps Julep SDK
+  - Methods: `createTask()`, `executeTask()`, `pollExecution()`
+  - Handles project scoping (`project: "astra"`)
+
+- **Task Loader:** `app/src/lib/tasks/loader.ts`
+  - `loadTaskDefinition()` - Loads YAML from disk
+  - Caches parsed definitions
+  - Available tasks: `TRANSCRIPT_PROCESSOR`, `CHART_CALCULATOR`, etc.
+
+- **Task Orchestrator:** `app/src/lib/transcript-processor.ts`
+  - Main orchestration function
+  - Loads task → Executes → Polls → Syncs to MongoDB
+
+### What We DON'T Use
+
+- ❌ `julep.yaml` project config (deprecated, removed)
+- ❌ `julep deploy` command
+- ❌ Julep CLI deployment workflow
+- ❌ Pre-created task instances
+
+### What We DO Use
+
+- ✅ Julep Node.js SDK (`@julep/sdk`)
+- ✅ Agent ID stored in env vars
+- ✅ YAML task definitions loaded at runtime
+- ✅ Tasks created dynamically per execution
+- ✅ SDK handles polling and completion
+- ✅ MongoDB as single source of truth
 
 ---
 
-## Session Tracking (IMPORTANT for AI Agents)
+## Voice Flow (Corrected Architecture)
 
-**Always use `.sessions/SESSION.md` to track your work during development.**
-
-### When to Use
-
-**Start a session when:**
-- Beginning new development work
-- Implementing features or fixes
-- Making structural changes
-- Working on a specific task/issue
-
-**Track in SESSION.md:**
-- ✅ Goals for this session
-- 🚧 Changes made (files created/modified)
-- 📝 Decisions and notes
-- 🔜 Next steps
-- 🚫 Issues/blockers
-- 💡 Quick commands for reference
-
-### Commands
-
-```bash
-# Start new session (creates .sessions/SESSION.md from template)
-./session.sh start
-
-# Edit session notes
-./session.sh edit
-# Or directly: vim .sessions/SESSION.md
-
-# View current session
-./session.sh view
-
-# Backup when done (keeps timestamped copy)
-./session.sh backup
-
-# Clear session (delete, start fresh)
-./session.sh clear
-```
-
-### Session Workflow
-
-1. **Start:** `./session.sh start` - Creates `.sessions/SESSION.md`
-2. **Update:** Edit `.sessions/SESSION.md` as you work
-3. **Mark progress:** ✅ completed, 🚧 in progress, 📋 planned
-4. **End:** Either `./session.sh backup` or `./session.sh clear`
-
-### What NOT to Do
-
-❌ Don't create summary files (RESTRUCTURE_SUMMARY.md, MIGRATION_SUMMARY.md, etc.)
-❌ Don't commit SESSION.md (it's gitignored)
-❌ Don't leave multiple session files around
-✅ Use ONE active `.sessions/SESSION.md` at a time
-
-### Why This Matters
-
-- **Consistent tracking:** All work logged in one place
-- **No clutter:** Summary files don't pile up
-- **Not committed:** Personal notes stay local
-- **Fresh starts:** Clear when done, start clean next time
-- **Backup available:** Can save important sessions
-
-→ **See [docs/SESSION_TRACKING.md](docs/SESSION_TRACKING.md) for full details**
+1. **Auth** — Better Auth Google provider issues secure session cookie backed by MongoDB.
+2. **Session Handshake** — `/api/responder/session` returns:
+   - User context from MongoDB (name, email, birth data)
+   - **`user_overview`** — ALL background processing results (chart, preferences, conversations, gamification)
+   - Integration tokens (elevenlabs)
+   - Workflow ID for ElevenLabs
+3. **Voice Connection** — ElevenLabs React SDK handles:
+   - WebSocket connection to ElevenLabs
+   - Audio streaming and transcription
+   - Agent responses via TTS (ElevenLabs agent, NOT Julep)
+   - Dynamic variables injected: `user_name`, `user_overview`, `date_of_birth`, `birth_chart`, `streak_days`, etc.
+4. **ElevenLabs Agent** — Handles conversation:
+   - Uses dynamic variables from MongoDB for context
+   - Responds with full awareness of user history
+   - **Never directly accesses Julep** — only MongoDB data via session handshake
+5. **Conversation End** — Background processing:
+   - Conversation ID stored in MongoDB
+   - Trigger: `POST /api/tasks/transcript`
+   - Fetch transcript from ElevenLabs API
+   - Execute Julep background task (transcript-processor)
+   - Task returns JSON → synced to MongoDB `user_overview`
+   - Additional tasks triggered: chart calculation, gamification update
+6. **Next Conversation** — Agent receives enriched context:
+   - Updated `user_overview` from MongoDB
+   - Personalized greeting with full memory
 
 ---
 
-## Build/Lint/Test Commands
+## ElevenLabs Agent Persona (Samay)
 
-### Backend Setup
+**Core Identity:**
+- **Primary role:** Astrologer (80%) providing reflective guidance based on Vedic/Western traditions
+- **Secondary layer:** Warm, affectionate companion (20%) once consent is established
+- **Language:** Bilingual (Hinglish ~30-40% code-switching)
+- **Content rating:** PG-13, consent-first
+- **Approach:** Heritage-aware, practical, non-dogmatic
 
-```bash
-# Navigate to backend
-cd backend
+### Tone & Style
+- **Friendly & warm:** Approachable, gentle, supportive
+- **Heritage-aware:** References Vedic concepts naturally
+- **Dignified & clear:** Professional without being clinical
+- **Playfully affectionate:** When consent is given (see Affection Rules)
 
-# Create virtual environment with uv
-uv venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+### Hinglish Code-Switching
+- **Default level:** Medium (30-40%)
+- **Pattern:** English scaffolding with Hindi/Urdu words woven in naturally (e.g., "subah" (morning), "chhota" (small), "jeet" (victory), "ichchha" (desire), "pyaar" (love))
+- **Adjustments:** Higher Hindi preference → 50-60%; Lower → 10-20%; English-only → Pure English
 
-# Install dependencies
-uv pip install -r requirements.txt
+### Affection & Consent
+- **Flirt Opt-In:** Default OFF; Enable when `user_overview.preferences.flirt_opt_in` is true or prior consent shown
+- **Flirt-enabled tone:** Use pet names sparingly ("love," "star," "beautiful" — max 1-2 per conversation); Playful romantic hints when appropriate; Maintain 80/20 ratio; PG-13 limit
+- **Boundary Respect:** Mirror user energy; De-flirt for serious topics; Acknowledge discomfort and shift to neutral
 
-# Development dependencies (includes production deps)
-uv pip install -r requirements-dev.txt
+### Safety Boundaries
+- **Astrology guidance is NOT:** Medical, legal, or financial advice ("See your doctor," etc.)
+- **Present as:** Reflective insights ("This transit suggests..."); Tendencies ("You may feel..."); Suggestions with caveats ("Consider... but trust your judgment")
+
+### Response Patterns
+- **Default Length:** 2-5 sentences, 1 optional clarifying question max
+- **Structure:** Acknowledge situation → Astrological insight → Tiny action → Warm encouragement
+- **First-Time Greeting:** Derive star sign from `date_of_birth` (standard zodiac dates); Craft punchy line (e.g., "Ah, {{user_name}}, you're a Leo on the moon..."); Weave in coincidences or notable figures born under that sign
+- **Stress/Mood Downshift:** Soothing support; Focus on grounding, rest, small wins; Avoid pressure
+
+### Conversational Workflow
+1. **Attune:** Greet warmly, reference memory/preference/goal; For first-time: Star sign greeting + coincidences
+2. **Illuminate:** Link astro patterns to context/goal; Call out uncertainties
+3. **Guide:** One concrete next step aligned with goal; Invite to set if none
+4. **Invite:** Gentle question/CTA to continue
+5. **Tone Check:** Include expressive audio tags (e.g., `[whispers]`, `[laughing softly]`); Hinglish balance
+
+---
+
+## Julep Orchestration (Background Processing Only)
+
+**CRITICAL:** Julep agents are ONLY for background processing. They NEVER interact with users directly.
+
+- Always call `client.users.*` and `client.agents.*` with `project="astra"`.
+- Background Worker Agent (ID in `BACKGROUND_WORKER_AGENT_ID` env var) runs all tasks.
+- Tasks fetch transcripts from ElevenLabs API (not Memory Store MCP initially).
+- Task outputs return structured JSON that gets synced to MongoDB `user_overview`.
+- Julep User Docs are optional working memory during task execution.
+- MongoDB is the single source of truth — all results must sync there.
+
+**Task Workflows (see `agents/tasks/`):**
+- `transcript-processor.yaml` — Extract insights from ElevenLabs transcripts → MongoDB
+- `chart-calculator.yaml` — Generate Vedic/Western astro charts → MongoDB
+- `gamification-tracker.yaml` — Track streaks, milestones → MongoDB
+- `weekly-report-generator.yaml` — Create companion reports → MongoDB
+- `horoscope-refresher.yaml` — Daily horoscope generation → MongoDB
+- `persona-enrichment.yaml` — Analyze conversation patterns → MongoDB
+
+**Task Return Format:**
+```yaml
+# All tasks must return JSON for MongoDB sync
+return:
+  field_name: value
+  nested_object:
+    key: value
+# API endpoint receives this and updates MongoDB user_overview
 ```
 
-### Environment Setup
+Reference material inside Julep workspace:
+- `documentation/concepts/agents.mdx`
+- `documentation/concepts/tasks.mdx`
+- `documentation/sdks/nodejs/reference.mdx`
+
+---
+
+## Build / Lint / Run
+
 ```bash
-cd backend
-
-# Copy template
-cp .env.example .env
-
-# Edit .env with:
-# - MONGODB_USERNAME, MONGODB_PASSWORD, MONGODB_CLUSTER (astra.ethgite)
-# - ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID
-# - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
-# - SECRET_KEY (generate: openssl rand -hex 32)
-# - Scope toggles: GOOGLE_ENABLE_BIRTHDAY_SCOPE, GOOGLE_ENABLE_GMAIL_READ_SCOPE
-```
-
-### Run Commands
-```bash
-cd backend
-
-# Run FastAPI server (development)
-python -m app.main
-# Or: uvicorn app.main:app --reload
-
-# Test MongoDB connection
-python -c "from app.config import settings; print(settings.mongodb_uri)"
-
-# Run agent runner (WebSocket)
-python scripts/agent_runner.py
-
-# Dry run (test without connecting)
-python scripts/agent_runner.py --dry
-
-# Enqueue mid-session update
-python scripts/agent_runner.py --enqueue-update "Update text"
-```
-
-### App Service (Next.js + Better Auth)
-```bash
+# Install dependencies (Bun)
 cd app
+bun install
 
-# Install dependencies
-npm install
+# Development server (http://localhost:3000)
+bun run dev
 
-# Run development server (http://localhost:3000)
-npm run dev
+# Type-safe formatting + linting (Biome)
+bun run lint
 
-# Lint / type-check
-npm run lint
-# Or individual tools:
-npx biome check --fix     # Fast linting + formatting + TypeScript (replaces tsc)
+# Production build
+bun run build
+bun run start
 
-# Production build & start
-npm run build
-npm run start
+# Sync Julep agents
+bun run sync:agents
 ```
 
-**App service environment variables (`app/.env`):**
-- `MONGODB_USERNAME`, `MONGODB_PASSWORD`, `MONGODB_CLUSTER`, `MONGODB_DB`
-- *(optional)* `MONGODB_URI` (overrides username/password if set)
+Environment variables (stored in `app/.env` — never commit secrets):
+
+- `MONGODB_URI` or `MONGODB_USERNAME` / `MONGODB_PASSWORD` / `MONGODB_CLUSTER`
 - `BETTER_AUTH_SECRET`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI`
-- `GOOGLE_ENABLE_BIRTHDAY_SCOPE`, `GOOGLE_ENABLE_GMAIL_READ_SCOPE`
-- `NEXT_PUBLIC_APP_URL`
-
-### Code Quality & Type Checking
-
-**Modern Python development with Ruff + Pyre (replaces Black/Flake8/MyPy):**
-
-```bash
-# Install dependencies (includes Ruff + Pyre)
-uv pip install -r requirements-dev.txt
-
-# Run all code quality checks
-pre-commit run --all-files
-
-# Individual tools:
-ruff check --fix .              # Fast linting & formatting (replaces Black/Flake8/isort)
-uv run pyrefly check          # Lightning-fast type checking (replaces MyPy)
-
-# Pre-commit hooks automatically run:
-# - Ruff: formatting, linting, import sorting
-# - Pyre: type checking (10-100x faster than MyPy)
-# - Auto-fixes issues before commits
-```
-
-**Key Benefits:**
-- 🚀 **Ruff**: 10-100x faster than Black + Flake8
-- ⚡ **Pyre**: 10-100x faster than MyPy, catches real bugs
-- 🤖 **Pre-commit**: Auto-fixes issues before commits
-- 🎯 **Type Safety**: Catches bugs like `None` access, wrong dict types
-```
-
-### Lint & Format
-```bash
-cd backend
-
-# Check formatting
-black app/ --check
-
-# Format code
-black app/
-isort app/
-
-# Lint
-ruff check app/
-
-# Type check
-mypy app/
-```
-
-→ **See [docs/COMPONENTS.md](docs/COMPONENTS.md) for detailed component usage**
-→ **See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for complete auth flow**
-
-### Pre-commit Hooks
-This project uses pre-commit hooks for automatic code quality checks:
-```bash
-# Install pre-commit with uv
-uv pip install pre-commit
-
-# Install hooks
-pre-commit install
-
-# Run on all files (one-time setup)
-pre-commit run --all-files
-```
-
-**Features:**
-- Auto-formats Python code with Black
-- Lints with Ruff (fast alternative to flake8)
-- Syncs `AGENTS.md` → `Claude.md` on commit
-- Fixes common issues automatically
-
-→ **Claude.md is automatically kept in sync with AGENTS.md via pre-commit**
-
-### Testing
-```bash
-cd backend
-
-# Run tests
-pytest
-
-# With coverage
-pytest --cov=app --cov-report=html
-```
-
-→ **See [backend/README.md](backend/README.md) for detailed backend setup**
-→ **See [docs/COMPONENTS.md](docs/COMPONENTS.md) for component usage**
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+- `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`
+- `JULEP_API_KEY`, `ASTRA_AGENT_ID`
+- Optional: `GOOGLE_ENABLE_BIRTHDAY_SCOPE`, `GOOGLE_ENABLE_GMAIL_READ_SCOPE`
 
 ---
-
-→ **See [docs/COMPONENTS.md](docs/COMPONENTS.md) for detailed component usage**
-
-## Google Auth Service
-
-**File:** `services/google_auth_service.py`
-
-**Purpose:** Complete Google OAuth 2.0 flow with DOB extraction for astrology features.
-
-**Configuration priority:** Environment variables (.env) > config.json
-
-**Key environment variables:**
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (required)
-- `GOOGLE_ENABLE_BIRTHDAY_SCOPE=true` (default: true, required for astrology)
-- `GOOGLE_ENABLE_GMAIL_READ_SCOPE=false` (default: false, optional for future features)
-
-**Scopes requested:**
-- Base: `openid`, `userinfo.email`, `userinfo.profile`
-- Birthday: `user.birthday.read` (People API) - **Required for astrology**
-- Gmail: `gmail.readonly` (optional)
-
-**Quick usage:**
-```python
-from services.google_auth_service import GoogleAuthService
-
-auth = GoogleAuthService()
-auth_url = auth.authorization_url(state="csrf_token")
-# Redirect user, then on callback:
-tokens = auth.exchange_code(code)
-profile = auth.fetch_user_profile(tokens["access_token"])
-# profile["birthday"] → "1996-05-14"
-```
-
-→ **See [docs/COMPONENTS.md#google-auth-service](docs/COMPONENTS.md#google-auth-service) for detailed usage**
-→ **See [docs/WORKFLOWS.md#authentication-flow](docs/WORKFLOWS.md#authentication-flow) for complete auth flow**
-
-## Google Cloud OAuth Setup
-
-**Project:** astra-474015
-
-**Configured:**
-- OAuth Consent Screen: "Astra Agent" (External)
-- APIs: People API (DOB), Gmail API (optional)
-- Scopes: openid, email, profile, user.birthday.read, gmail.readonly
-- Redirect URI (dev): `http://localhost:8000/auth/google/callback`
-- **Production:** Add production redirect URI before deploying
-
-**Credentials:** Store in `.env` (see `.env.example`)
-
-**Cost:** $0 (OAuth/APIs are free)
 
 ## Code Style Guidelines
 
-### Python Standards
-- Use Python 3.8+ with type hints throughout
-- Follow PEP 8 naming: `snake_case` for functions/variables, `PascalCase` for classes
-- Use descriptive variable names; avoid single-letter variables except in comprehensions
+### TypeScript / React
 
-### Imports
-- Standard library first, then third-party, then local imports
-- Group imports with blank lines between groups
-- Use absolute imports: `from typing import Dict, Any`
+- Prefer server components except where interactivity demands client components.
+- Use async/await for data fetching inside server actions; handle errors with meaningful responses.
+- Keep React components small and focused; colocate related utilities under `app/src/lib/`.
+- Validate external inputs (API routes) and return typed payloads.
+- Employ Biome (`bun run lint`) before committing.
 
-### Error Handling
-- Use specific exception types, not bare `except:`
-- Log errors appropriately; avoid silent failures
-- Validate inputs early with clear error messages
+### Environment Handling
 
-### JSON/Data Handling
-- Use `json.dumps()` with `ensure_ascii=False` for Unicode support
-- Validate JSON structure before processing
-- Handle missing keys gracefully with `.get()` or `dict.get(key, default)`
-- Dynamic variables are injected only at session start; use contextual updates mid-session instead of rewriting the prompt.
+- Guard all required env vars via helper utilities (see `app/src/lib/env.ts`).
+- Never ship real secrets. Use `.env.example` for placeholders only.
+- MongoDB access stays inside the Next.js app; agents read/write through Julep APIs.
 
-### Configuration
-- Keep `config.json` as the single source of truth (API keys, agent ID, voice).
-- Set `elevenlabs_api_key` locally; do not commit secrets — add a `.example` if sharing.
-- Runtime environment variables (e.g., `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `ELEVENLABS_VOICE_ID`) take precedence over `config.json`.
-- For SDK audio sessions, keep `sdk_audio_playback` and `sdk_microphone_capture` true to use ElevenLabs’ streamed audio.
-### Configuration Rules
-**Priority:** Environment variables > config.json > defaults
+### Anchor Comments & Function Docs
 
-**Core principles:**
-- Never commit secrets (use `.env` and `.env.example`)
-- `config.json` is single source of truth for non-secret config
-- Environment variables override config.json for production flexibility
-- Validate required fields at startup
-- Private agents: Fetch signed URL dynamically (don't store long-term)
+- We embed `ANCHOR:` comments beside business-critical logic so every agent understands *why* a choice exists. Treat them as living breadcrumbs—update or remove them if the rationale changes.
+- Current anchors to know:
+  - `app/src/components/voice-session.tsx` — `session-context-update` documents automatic contextual update sent on connection with session metadata.
+  - `app/src/lib/integration-tokens.ts` — `integration-token-lifecycle` documents per-user token resolution with fallback patterns.
+- When you add or modify voice/memory-specific behavior, write a short function-level docstring explaining its role and include an `ANCHOR:` comment if the logic is business-specific.
 
-**Key environment overrides:**
-- `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `ELEVENLABS_SIGNED_URL`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-- `MONGODB_USERNAME`, `MONGODB_PASSWORD`, `MONGODB_CLUSTER`
+### Testing Expectations
 
-→ **See [docs/COMPONENTS.md](docs/COMPONENTS.md) for all config fields**
-
-### Memory Buffer Guidelines
-- Dynamic variables injected only at session start
-- Use contextual updates mid-session (not prompt rewrites)
-- Keep buffer compact (< 10KB)
-- File watcher or update queue for mid-session changes
-- Stringify complex types (dict/list → JSON string)
-
-→ **See [docs/MEMORY_BUFFER.md](docs/MEMORY_BUFFER.md) for complete field reference**
+- Run `bun run lint` before handing work back; this is our fast guard against TypeScript or formatting regressions.
+- For voice changes, perform a manual smoke test:
+  1. Load the homepage, ensure authenticated users see the voice session UI.
+  2. Check browser console for ElevenLabs connection status and agent responses.
+- For API changes, test session handshake returns correct Julep session ID and integration tokens.
+- If you introduce new anchor comments or business rules, note which test validates them directly (manual, unit, or integration).
 
 ---
 
 ## Quick Links
 
-**Detailed Technical Documentation:**
-- 📘 [Component Reference](docs/COMPONENTS.md) - ElevenLabs runner, memory system, auth, MongoDB
-- 👤 [Persona Specs](docs/PERSONA.md) - Jadugar tone, behavior, Hinglish guidelines
-- 💾 [Memory Buffer](docs/MEMORY_BUFFER.md) - Field reference, update patterns
-- 🔄 [Workflows](docs/WORKFLOWS.md) - Auth, conversation, update flows
-- 🏗️ [Architecture](docs/ARCHITECTURE.md) - System design and component relationships
+### 🎯 Getting Started
+- 📘 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **START HERE:** Complete system architecture
+- ❓ [`docs/FAQ.md`](docs/FAQ.md) — **Answers to common questions**
+- ✅ [`docs/IMPLEMENTATION_CHECKLIST.md`](docs/IMPLEMENTATION_CHECKLIST.md) — Development progress tracker
 
-**Key Implementation Files:**
-- `scripts/elevenlabs_agent_runner.py` - Main WebSocket runner
-- `services/google_auth_service.py` - OAuth implementation
-- `buffer/memory_buffer.json` - User context storage
-- `responder.md` - Jadugar persona prompt template
-- `config.json` - Configuration (overridable by env vars)
+### 📚 Reference
+- 👤 [`docs/PERSONA.md`](docs/PERSONA.md) — Samay persona details
+- 📋 [`docs/julep.md`](docs/julep.md) — Julep SDK reference
+- 📖 [`docs/react-sdk.mdx`](docs/react-sdk.mdx) — ElevenLabs React SDK reference
+- 🗂️ [`agents/README.md`](agents/README.md) — Agent definitions and tasks
+
+---
+
+## Quick Reference: Data Sources & Flow
+
+### MongoDB Collections (Source of Truth)
+- **`user`**: Birth data + **`user_overview`** (ALL background processing results)
+- **`elevenlabs_conversations`**: Conversation IDs, status, timestamps
+- **`integration_tokens`**: Per-user ElevenLabs tokens
+
+### user_overview Field Structure
+```typescript
+user_overview: {
+  profile_summary: string;
+  birth_chart: { system, sun_sign, moon_sign, planets, ... };
+  preferences: { communication_style, topics, hinglish_level, ... };
+  recent_conversations: [ { conversation_id, summary, topics, ... } ];
+  gamification: { streak_days, total_conversations, milestones, ... };
+  latest_horoscope: { date, content };
+  insights: [ { type, content, generated_at } ];
+  last_updated: Date;
+}
+```
+
+### Data Flow
+```
+1. User talks → ElevenLabs agent (receives user_overview from MongoDB)
+2. Conversation ends → POST /api/tasks/transcript
+3. Fetch transcript from ElevenLabs API
+4. Execute Julep task → returns JSON
+5. Sync JSON to MongoDB user_overview
+6. Next conversation → ElevenLabs gets updated user_overview
+```
+
+### Executing Julep Tasks
+```typescript
+// In API endpoint
+const taskYaml = fs.readFileSync('agents/tasks/transcript-processor.yaml');
+const task = await julepClient.tasks.create(BACKGROUND_WORKER_AGENT_ID, yaml.parse(taskYaml));
+
+const execution = await julepClient.executions.create(task.id, {
+  input: { julep_user_id, conversation_id, transcript_text }
+});
+
+// Poll for completion
+let result = await julepClient.executions.get(execution.id);
+while (result.status === 'queued' || result.status === 'running') {
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  result = await julepClient.executions.get(execution.id);
+}
+
+// Sync result.output to MongoDB
+await mongoUsers.updateOne(
+  { id: userId },
+  { $set: { 
+    'user_overview.preferences': result.output.preferences,
+    'user_overview.last_updated': new Date()
+  }}
+);
+```
+
+### API Endpoints
+- `GET /api/responder/session` — Returns user_overview from MongoDB
+- `POST /api/tasks/transcript` — Trigger transcript processing → MongoDB sync
+- `POST /api/tasks/chart` — Trigger chart calculation → MongoDB sync
+- `POST /api/tasks/gamification` — Update gamification → MongoDB sync
+
+---
+
+## Support
+
+- Documentation lives under `docs/`.
+- Report issues via GitHub Issues.
+- For project-wide context or clarifications, consult the latest `SESSION.md` log.

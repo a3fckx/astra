@@ -1,0 +1,81 @@
+name: Daily Horoscope Generator
+description: Generate personalized daily horoscope based on user birth chart
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - sun_sign
+    - moon_sign
+  properties:
+    sun_sign:
+      type: string
+      description: User's sun sign (e.g., "Leo", "Pisces")
+    moon_sign:
+      type: string
+      description: User's moon sign
+    rising_sign:
+      type: string
+      description: User's rising/ascendant sign (optional)
+    user_name:
+      type: string
+      description: User's first name for personalization
+    recent_topics:
+      type: array
+      items:
+        type: string
+      description: Recent conversation topics for context
+    astrology_system:
+      type: string
+      enum: [vedic, western, both]
+      default: vedic
+      description: Which system to base horoscope on
+
+main:
+  # Generate personalized daily horoscope
+  - prompt: |-
+      Generate today's horoscope for {user_name or "this person"}.
+
+      BIRTH CHART:
+      Sun: {sun_sign}
+      Moon: {moon_sign}
+      Rising: {rising_sign or "Unknown"}
+      System: {astrology_system}
+
+      RECENT INTERESTS: {", ".join(recent_topics) if recent_topics else "General guidance"}
+
+      Create a warm, personalized 2-3 paragraph horoscope for TODAY ({datetime.now().strftime("%B %d, %Y")}).
+
+      TONE: Warm, encouraging, specific. Like talking to a friend who trusts astrology.
+      INCLUDE:
+      - Current planetary transits affecting their signs
+      - Practical guidance for relationships, work, personal growth
+      - One specific action they can take today
+      - Lucky element (color/number/time) if relevant
+
+      AVOID: Generic zodiac advice, fear-mongering, vague predictions
+
+      EXAMPLE FORMAT:
+      "Good morning! Today's Moon in Aquarius brings fresh perspective to your emotional landscape, {user_name}. With your Pisces Moon, you might feel pulled between intuition and logic—trust both. 
+
+      Career-wise, Mercury's position favors clear communication. That project you've been hesitating on? Today's the day to pitch it. Your Leo Sun's natural confidence will shine through.
+
+      Personal tip: Wear blue today—it aligns with the water element energizing your chart. Best time for important decisions: 2-4 PM."
+
+      sun_sign = {_.sun_sign}
+      moon_sign = {_.moon_sign}
+      rising_sign = {_.rising_sign}
+      user_name = {_.user_name}
+      recent_topics = {_.recent_topics}
+      astrology_system = {_.astrology_system}
+    unwrap: true
+
+  # Return horoscope for MongoDB sync
+  - return:
+      success: true
+      horoscope:
+        date: $ datetime.now().strftime("%Y-%m-%d")
+        content: $ steps[0].output
+        sun_sign: $ _.sun_sign
+        moon_sign: $ _.moon_sign
+        generated_at: $ datetime.now().isoformat()

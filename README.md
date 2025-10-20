@@ -1,295 +1,370 @@
-# Astra - Astrology Conversational AI
+# Astra - AI Astrology Companion
 
-Multi-user astrology conversational AI agent (Jadugar) combining voice conversations, personalized birth chart analysis, and real-time astrological guidance.
+> Multi-agent astrology platform combining real-time voice conversations with intelligent background processing
 
-## Architecture
+---
 
-**Current layout:**
-- **Gateway:** Next.js 14 + Better Auth (Google OAuth, session cookies, responder console)
-- **Agents:** Python FastAPI monolith (ElevenLabs orchestration, background workers)
+## 🌟 Overview
+
+Astra is a mystical astrology companion that provides personalized guidance through voice conversations. The platform uses a sophisticated multi-agent architecture where:
+
+- **ElevenLabs agents** handle real-time user conversations
+- **Julep agents** process data in the background (transcripts, charts, insights)
+- **MongoDB** serves as the single source of truth
+- **Background processing** continuously enriches user profiles
+
+**The Magic:** From the second conversation onward, users experience fully personalized interactions based on their complete history, preferences, and astrological profile.
+
+---
+
+## 🏗️ Architecture
+
+### Three-Layer System
 
 ```
-┌─────────────────────────────────────────────────────┐
-│               Next.js Auth Gateway                  │
-│  (Better Auth, REST ingress, WebSocket streaming)   │
-└─────────────┬───────────────────────────────────────┘
-              │ writes/streams via MongoDB
-              ▼
-┌─────────────────────────────────────────────────────┐
-│                 MongoDB Atlas Cluster                │
-│  users, sessions, responder_outbox, responder_events │
-└─────────────┬───────────────────────────────────────┘
-              │ polls + publishes
-              ▼
-┌─────────────────────────────────────────────────────┐
-│             Python FastAPI Agent Mesh               │
-│  ElevenLabs runner, memory buffer, background jobs  │
-└─────────────────────────────────────────────────────┘
-
-Browser ⇄ Next.js (cookies + WebSocket) ⇄ MongoDB ⇄ FastAPI ⇄ ElevenLabs
+┌─────────────────────────────────────────────┐
+│  Layer 1: Next.js (Presentation)            │
+│  • Voice UI (ElevenLabs React SDK)          │
+│  • Dashboard, API routes                    │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ↕
+┌─────────────────┴───────────────────────────┐
+│  Layer 2: MongoDB (Source of Truth)         │
+│  • User profiles with birth data            │
+│  • user_overview (all enriched data)        │
+│  • Conversation history                     │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ↕
+┌─────────────────┴───────────────────────────┐
+│  Layer 3: AI Processing                     │
+│  • ElevenLabs (frontline conversations)     │
+│  • Julep (background tasks)                 │
+└─────────────────────────────────────────────┘
 ```
 
-## Quick Start
+### Key Principle
 
-### Backend Setup
+**ElevenLabs agents** talk to users with context from MongoDB  
+**Julep agents** process data in background and write to MongoDB  
+**MongoDB** stores everything and provides context to ElevenLabs
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js 18+** or **Bun 1.0+**
+- **MongoDB Atlas** account
+- **ElevenLabs** API key
+- **Julep** API key
+- **Google OAuth** credentials
+
+### Installation
 
 ```bash
-# Navigate to backend
-cd backend
-
-# Create virtual environment with uv
-uv venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Clone repository
+git clone <repository-url>
+cd astra
 
 # Install dependencies
-uv pip install -r requirements.txt
+cd app
+bun install
 
 # Configure environment
 cp .env.example .env
 # Edit .env with your credentials
 
 # Run development server
-python -m app.main
-```
+bun run dev
 
-Backend will be available at:
-- API: http://localhost:8000
-- Docs: http://localhost:8000/docs
-- Health: http://localhost:8000/api/health
-
-### App Service Setup
-
-```bash
-# Navigate to app service
-cd app
-
-# Install dependencies
-npm install
-
-# Copy environment template
-cp .env.example .env
-# Edit .env with MongoDB username/password (or full URI), Better Auth secret, Google credentials
-
-# Run development server (http://localhost:3000)
-npm run dev
-```
-
-## Session Tracking
-
-Track your current work in `.sessions/SESSION.md` (gitignored, not committed):
-
-```bash
-# Start new session
-./session.sh start
-
-# Edit session notes
-./session.sh edit
-
-# View current session
-./session.sh view
-
-# Backup session with timestamp (when done)
-./session.sh backup
-
-# Clear session (start fresh)
-./session.sh clear
-```
-
-**Files:**
-- `.sessions/SESSION.md` - Active session tracking (gitignored)
-- `.sessions/template.md` - Template for new sessions
-
-**Use for:**
-- Tracking changes made during development
-- Noting todos, decisions, and blockers
-- Quick command reference
-- Session notes and progress
-
-**Important:** Don't create summary files. Use `.sessions/SESSION.md` for all tracking.
-
-## Project Structure
-
-```
-astra/
-├── backend/                  # Python FastAPI monolith (agents + internal APIs)
-│   ├── app/
-│   │   ├── api/             # REST + WebSocket routes
-│   │   ├── core/            # Business logic
-│   │   ├── services/        # External services (Google, ElevenLabs, MongoDB)
-│   │   ├── models/          # Pydantic models
-│   │   ├── utils/           # Utilities
-│   │   ├── workers/         # Background workers
-│   │   ├── config.py        # Configuration
-│   │   └── main.py          # FastAPI app
-│   ├── scripts/             # Standalone scripts
-│   ├── tests/               # Tests
-│   └── requirements.txt     # Dependencies
-│
-├── app/                      # Next.js gateway (Better Auth + dashboard)
-│   ├── src/
-│   │   ├── app/             # App Router routes (pages + API handlers)
-│   │   ├── components/      # Client/server React components
-│   │   └── lib/             # Better Auth config, Mongo helpers, clients
-│   ├── package.json
-│   └── next.config.mjs
-│
-├── shared/                   # Shared resources
-│   ├── prompts/             # Agent prompts (Jadugar persona)
-│   └── config/              # Config templates
-│
-├── docs/                     # Documentation
-│   ├── ARCHITECTURE.md      # System architecture
-│   ├── COMPONENTS.md        # Component reference
-│   ├── PERSONA.md           # Jadugar specifications
-│   ├── MEMORY_BUFFER.md     # Context buffer reference
-│   └── WORKFLOWS.md         # Process flows
-│
-└── AGENTS.md                 # Agent directives (for AI)
-```
-
-## Technology Stack
-
-### Gateway
-- **Framework:** Next.js 14 (App Router) + React 18
-- **Auth:** Better Auth (Google social provider, Mongo adapter)
-- **Language:** TypeScript
-- **Realtime:** `ws` WebSocket server bridged through Next.js API routes
-
-### Agents / Backend
-- **Framework:** FastAPI 0.104+
-- **Runtime:** Python 3.9+, asyncio workers
-- **External APIs:** ElevenLabs Conversational AI (voice streaming)
-- **Database:** MongoDB Atlas (shared with gateway)
-- **Astrology:** flatlib/swisseph (planned)
-
-## Features
-
-### ✅ Implemented
-- Next.js control center with Google sign-in (Better Auth)
-- Session-aware responder dashboard + WebSocket streaming
-- MongoDB-backed responder queues (`responder_outbox`, `responder_events`)
-- FastAPI monolith with ElevenLabs runner + memory buffer
-- Google People API DOB extraction (Python service)
-- Session tracking workflow for contributors
-
-### 🚧 In Progress / Planned
-- Background analyzer to enrich astro insights automatically
-- Astrology utilities (chart calculation, transit mapping)
-- Additional scopes (e.g., Gmail read) wiring inside agents
-- Production hardening (queue abstraction, observability, deployment scripts)
-
-## Development
-
-### Backend Development
-
-```bash
-cd backend
-
-# Run with auto-reload
-python -m app.main
-
-# Or with uvicorn
-uvicorn app.main:app --reload
-
-# Run tests
-pytest
-
-# Format code
-black app/
-isort app/
-
-# Lint
-flake8 app/
+# Open http://localhost:3000
 ```
 
 ### Environment Variables
 
-Required in `.env`:
-- `MONGODB_USERNAME`, `MONGODB_PASSWORD`, `MONGODB_CLUSTER`
-- `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `SECRET_KEY` (generate with: `openssl rand -hex 32`)
-
-See `.env.example` for full list.
-
-## Documentation
-
-### For Developers
-- [Architecture Overview](docs/ARCHITECTURE.md) - System design
-- [Component Reference](docs/COMPONENTS.md) - Technical deep-dive
-- [Workflows](docs/WORKFLOWS.md) - Process flows
-- [Backend README](backend/README.md) - Backend setup
-
-### For AI Agents
-- [AGENTS.md](AGENTS.md) - Directives for coding agents
-
-### For Persona Design
-- [Jadugar Persona](docs/PERSONA.md) - Agent specifications
-- [Memory Buffer](docs/MEMORY_BUFFER.md) - Context structure
-
-## Configuration
-
-Configuration is loaded with priority:
-1. Environment variables (.env) - **Highest priority**
-2. shared/config/defaults.json - Fallback defaults
-
-## Deployment
-
-### Backend (Production)
-
 ```bash
-cd backend
+# MongoDB
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/astra
+MONGODB_DB=astra
 
-# Install dependencies
-uv pip install -r requirements.txt
+# Authentication
+BETTER_AUTH_SECRET=your_secret_key_here
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback/google
 
-# Run with gunicorn
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+# Julep (Background Processing)
+JULEP_API_KEY=your_julep_api_key
+BACKGROUND_WORKER_AGENT_ID=agent_xyz123
+
+# ElevenLabs (Voice Interface)
+ELEVENLABS_API_KEY=your_elevenlabs_api_key
+ELEVENLABS_AGENT_ID=agent_abc789
+ELEVENLABS_WORKFLOW_ID=workflow_def456
 ```
 
-### App Service (Production)
+---
 
-```bash
-cd app
+## 📂 Project Structure
 
-# Build production output
-npm run build
-
-# Serve with `npm run start` or deploy via Vercel/Node hosting
+```
+astra/
+├── app/                          # Next.js application
+│   ├── src/
+│   │   ├── app/                  # App router pages & API routes
+│   │   │   ├── api/
+│   │   │   │   ├── auth/         # Better Auth endpoints
+│   │   │   │   ├── responder/    # Session handshake
+│   │   │   │   └── tasks/        # Background task triggers
+│   │   │   ├── dashboard/        # Main dashboard page
+│   │   │   └── page.tsx          # Landing page
+│   │   ├── components/           # React components
+│   │   │   └── voice-session/    # ElevenLabs voice UI
+│   │   └── lib/                  # Utilities
+│   │       ├── auth.ts           # Better Auth config
+│   │       ├── mongo.ts          # MongoDB schema & helpers
+│   │       ├── env.ts            # Environment validation
+│   │       └── logger.ts         # Structured logging
+│   ├── scripts/                  # Utilities
+│   └── tests/                    # Test suites
+├── agents/                       # Julep agent definitions
+│   ├── definitions/
+│   │   └── astra.yaml            # Background worker agent
+│   └── tasks/                    # Task workflows (YAML)
+│       ├── transcript-processor-simple.yaml
+│       ├── chart-calculator.yaml
+│       ├── gamification-tracker.yaml
+│       └── weekly-report-generator.yaml
+├── docs/                         # Documentation
+│   ├── ARCHITECTURE.md           # Complete system architecture
+│   ├── FAQ.md                    # Common questions
+│   ├── WALKTHROUGH.md            # Step-by-step guide
+│   └── PRACTICAL_IMPLEMENTATION.md
+└── README.md                     # This file
 ```
 
-## External Services Setup
+---
 
-### Google Cloud (OAuth)
-- Project ID: astra-474015
-- Enable APIs: People API, Gmail API (optional)
-- Create OAuth 2.0 credentials
-- Add redirect URI: `http://localhost:8000/api/auth/google/callback` (dev)
+## 💡 How It Works
 
-### MongoDB Atlas
-- Create serverless cluster
-- Get connection string
-- Set in `MONGODB_URI` environment variable
+### First Conversation
 
-### ElevenLabs
-- Create account
-- Get API key
-- Create conversational AI agent
-- Set `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID`
+1. User authenticates with Google OAuth
+2. User starts voice conversation via ElevenLabs
+3. Agent responds with basic context (name, birth date if available)
+4. Conversation ends
+5. **Background processing begins:**
+   - Transcript fetched from ElevenLabs API
+   - Julep task extracts insights (birth details, preferences, topics)
+   - Results synced to MongoDB `user_overview`
+   - Additional tasks triggered (chart calculation, gamification)
 
-## Contributing
+### Second Conversation (Personalized)
 
-1. Follow semantic commit messages (`feat:`, `fix:`, `docs:`, etc.)
-2. Run tests and linting before committing
-3. Update documentation for new features
-4. Keep backend logic in backend/, app service components in app/
+1. User returns
+2. Dashboard shows: daily horoscope, streak, topics, chart
+3. Voice session starts
+4. ElevenLabs agent receives **full user_overview** from MongoDB
+5. Agent greets with complete awareness:
+   > "Welcome back, Sarah! Your 5-day streak is amazing! I remember we discussed career timing. Your Moon in Gemini today is perfect for interviews..."
 
-## License
+---
 
-Proprietary - All rights reserved
+## 🗄️ MongoDB Schema
 
-## Support
+### Key Collections
 
-- Documentation: See `docs/` folder
-- Issues: Create GitHub issue
-- Contact: [Your contact info]
+**users** - User profiles with enriched data
+```typescript
+{
+  id: string,
+  name: string,
+  email: string,
+  date_of_birth?: Date,
+  birth_time?: string,
+  birth_location?: string,
+  julep_user_id?: string,
+  
+  // ⭐ All background processing results
+  user_overview?: {
+    profile_summary: string,
+    birth_chart?: { ... },
+    preferences?: { ... },
+    recent_conversations: [ ... ],
+    gamification?: { ... },
+    latest_horoscope?: { ... },
+    insights: [ ... ]
+  }
+}
+```
+
+**elevenlabs_conversations** - Conversation tracking
+```typescript
+{
+  conversation_id: string,
+  user_id: string,
+  status: "active" | "completed",
+  started_at: Date,
+  ended_at?: Date
+}
+```
+
+---
+
+## 🤖 Agents
+
+### ElevenLabs Agent (Frontline)
+
+- Handles ALL real-time user conversations
+- Receives context from MongoDB via dynamic variables
+- Never accesses Julep directly
+- Configured in ElevenLabs dashboard
+
+### Julep Background Worker (Background)
+
+- NEVER interacts with users
+- Executes tasks asynchronously
+- Processes transcripts, generates charts, tracks metrics
+- Returns JSON that syncs to MongoDB
+- Defined in `agents/definitions/astra.yaml`
+
+---
+
+## 📋 Background Tasks
+
+All tasks defined as YAML workflows in `agents/tasks/`:
+
+- **transcript-processor** - Extract insights from conversations
+- **chart-calculator** - Generate Vedic/Western birth charts
+- **gamification-tracker** - Track streaks, milestones, engagement
+- **weekly-report-generator** - Create companion summaries
+- **horoscope-refresher** - Generate daily horoscopes
+
+---
+
+## 🔧 Development
+
+### Commands
+
+```bash
+# Development
+bun run dev              # Start dev server
+bun run build            # Production build
+bun run start            # Start production server
+
+# Code Quality
+bun run lint             # Run Biome linter
+bun test                 # Run test suite
+
+# Pre-commit hooks (auto-installed)
+# - YAML validation
+# - TypeScript type checking
+# - Tests
+```
+
+### Creating a Background Task
+
+1. Write YAML in `agents/tasks/my-task.yaml`
+2. Validate: Pre-commit hook checks syntax
+3. Test: `bun run scripts/test-task.ts my-task`
+4. Integrate: Add API endpoint in `app/src/app/api/tasks/`
+5. Sync: Update MongoDB with task output
+
+---
+
+## 📚 Documentation
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system design
+- **[FAQ.md](docs/FAQ.md)** - Common questions answered
+- **[WALKTHROUGH.md](docs/WALKTHROUGH.md)** - Step-by-step guide with examples
+- **[PRACTICAL_IMPLEMENTATION.md](docs/PRACTICAL_IMPLEMENTATION.md)** - Code examples
+- **[IMPLEMENTATION_CHECKLIST.md](docs/IMPLEMENTATION_CHECKLIST.md)** - Development progress
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+bun test
+
+# Test specific file
+bun test tests/integration/auth-user-flow.test.ts
+
+# Watch mode
+bun test --watch
+```
+
+---
+
+## 🚢 Deployment
+
+### Vercel (Recommended)
+
+```bash
+# Deploy
+vercel --prod
+
+# Configure environment variables in Vercel dashboard
+```
+
+### Environment Setup
+
+1. Create MongoDB Atlas cluster
+2. Set up Better Auth with Google OAuth
+3. Create Julep agent and get ID
+4. Configure ElevenLabs agent
+5. Add all environment variables to Vercel
+
+---
+
+## 🔒 Security
+
+- API keys stored in environment variables
+- MongoDB encryption at rest
+- Better Auth handles session security
+- Per-user data scoping
+- HTTPS for all API calls
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch
+3. Make changes with tests
+4. Ensure pre-commit hooks pass
+5. Submit pull request
+
+---
+
+## 📄 License
+
+[Your License Here]
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Next.js](https://nextjs.org/)
+- [ElevenLabs](https://elevenlabs.io/)
+- [Julep](https://julep.ai/)
+- [MongoDB](https://www.mongodb.com/)
+- [Better Auth](https://better-auth.com/)
+
+---
+
+## 📞 Support
+
+- **Documentation:** See `docs/` directory
+- **Issues:** Open GitHub issue
+- **Architecture Questions:** See `docs/ARCHITECTURE.md`
+- **FAQs:** See `docs/FAQ.md`
+
+---
+
+**Built with ❤️ - Astra, your AI astrology companion**

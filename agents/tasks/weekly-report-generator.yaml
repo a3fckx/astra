@@ -1,0 +1,105 @@
+name: Generate Weekly Companion Report
+description: Create warm, personalized weekly summary of conversations and progress
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - user_name
+    - recent_conversations
+  properties:
+    user_name:
+      type: string
+      description: User's first name
+    recent_conversations:
+      type: array
+      items:
+        type: object
+      description: Last 7 days of conversation summaries from MongoDB
+    gamification:
+      type: object
+      description: Current gamification stats (streak, total conversations, milestones)
+    preferences:
+      type: object
+      description: User preferences (hinglish_level, communication_style)
+    birth_chart_summary:
+      type: string
+      description: Brief chart summary if available
+
+main:
+  # Calculate week stats
+  - evaluate:
+      conversation_count: $ len(_.recent_conversations)
+      all_topics: $ [topic for conv in _.recent_conversations for topic in conv.get("topics", [])]
+      unique_topics: $ list(set(_.all_topics))
+      streak: $ _.gamification.get("streak_days", 0) if _.gamification else 0
+      total_convos: $ _.gamification.get("total_conversations", 0) if _.gamification else 0
+      new_milestones: $ _.gamification.get("milestones", []) if _.gamification else []
+      hinglish: $ _.preferences.get("hinglish_level", 40) if _.preferences else 40
+      style: $ _.preferences.get("communication_style", "casual") if _.preferences else "casual"
+
+  # Generate weekly report
+  - prompt: |-
+      Create a warm weekly check-in for {user_name}, your astrology companion.
+
+      THIS WEEK'S ACTIVITY:
+      - {conversation_count} conversations
+      - Topics: {", ".join(unique_topics) if unique_topics else "General chat"}
+      - {streak}-day streak, {total_convos} total conversations
+      {f"- New milestones: {', '.join(new_milestones[:3])}" if new_milestones else ""}
+
+      {f"BIRTH CHART: {birth_chart_summary}" if birth_chart_summary else ""}
+
+      PREFERENCES:
+      - Hinglish level: {hinglish}% (0=none, 100=heavy)
+      - Style: {style}
+
+      CREATE A 4-PARAGRAPH WEEKLY REPORT:
+
+      1. WARM GREETING: Address {user_name}, acknowledge the week
+      2. JOURNEY RECAP: Highlight conversation themes and growth (2-3 sentences)
+      3. CELEBRATE PROGRESS: Note streak, milestones, topics explored with genuine enthusiasm
+      4. LOOKING AHEAD: One insight or reflection prompt for next week
+
+      TONE:
+      - Like a caring friend checking in, not a data dump
+      - Use {hinglish}% Hinglish (mix Hindi/English naturally)
+      - Be {style} but always supportive
+      - 2-3 emojis MAX
+      - Keep it conversational and warm
+
+      EXAMPLE STRUCTURE:
+      "Hey {user_name}! 🌟 Another week with the stars...
+
+      This week you dove into [topics]. I loved seeing you explore [insight]. Your questions about [topic] showed real depth.
+
+      Your {streak}-day streak is inspiring! That's dedication to self-discovery. [If milestone:] And wow—[milestone celebration]!
+
+      For next week, I'm curious: [thoughtful question based on their topics]. The cosmos is shifting toward [brief transit mention if relevant]. Stay open to [gentle guidance].
+
+      See you soon! ✨"
+
+      user_name = {_.user_name}
+      conversation_count = {_.conversation_count}
+      unique_topics = {_.unique_topics}
+      streak = {_.streak}
+      total_convos = {_.total_convos}
+      new_milestones = {_.new_milestones}
+      birth_chart_summary = {_.birth_chart_summary}
+      hinglish = {_.hinglish}
+      style = {_.style}
+    unwrap: true
+
+  # Return report for MongoDB sync
+  - return:
+      success: true
+      weekly_report:
+        week_start: $ (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        week_end: $ datetime.now().strftime("%Y-%m-%d")
+        content: $ steps[1].output
+        stats:
+          conversations: $ _.conversation_count
+          topics: $ _.unique_topics
+          streak: $ _.streak
+          milestones: $ _.new_milestones
+        generated_at: $ datetime.now().isoformat()

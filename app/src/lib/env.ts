@@ -1,3 +1,7 @@
+import { logger } from "@/lib/logger";
+
+const envLogger = logger.child("env");
+
 const boolFromEnv = (value: string | undefined, fallback: boolean): boolean => {
 	if (value === undefined) {
 		return fallback;
@@ -48,6 +52,7 @@ export const env = {
 		"BETTER_AUTH_SECRET",
 		process.env.BETTER_AUTH_SECRET,
 	),
+	memoryStoreDefaultToken: process.env.MEMORY_STORE_DEFAULT_TOKEN ?? undefined,
 	googleClientId: required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID),
 	googleClientSecret: required(
 		"GOOGLE_CLIENT_SECRET",
@@ -65,7 +70,12 @@ export const env = {
 		process.env.GOOGLE_ENABLE_GMAIL_READ_SCOPE,
 		false,
 	),
-	googlePromptRaw: process.env.GOOGLE_OAUTH_PROMPT ?? "select_account consent",
+	elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? undefined,
+	elevenLabsAgentId: process.env.ELEVENLABS_AGENT_ID ?? undefined,
+	julepApiKey: process.env.JULEP_API_KEY ?? undefined,
+	astraAgentId: process.env.ASTRA_AGENT_ID ?? undefined,
+	backgroundWorkerAgentId: process.env.BACKGROUND_WORKER_AGENT_ID ?? undefined,
+	googlePromptRaw: process.env.GOOGLE_OAUTH_PROMPT ?? undefined,
 };
 
 const BASE_SCOPES = [
@@ -103,13 +113,20 @@ type GooglePromptOption =
 	| "none"
 	| "select_account consent";
 
-const resolvedGooglePrompt = GOOGLE_PROMPT_VALUES.has(env.googlePromptRaw)
-	? (env.googlePromptRaw as GooglePromptOption)
-	: undefined;
+const resolvedGooglePrompt =
+	env.googlePromptRaw && GOOGLE_PROMPT_VALUES.has(env.googlePromptRaw)
+		? (env.googlePromptRaw as GooglePromptOption)
+		: undefined;
 
-if (!resolvedGooglePrompt) {
-	console.warn(
+if (!resolvedGooglePrompt && env.googlePromptRaw) {
+	envLogger.warn(
 		`GOOGLE_OAUTH_PROMPT value "${env.googlePromptRaw}" is not recognized. Falling back to provider default.`,
+	);
+}
+
+if (!process.env.ELEVENLABS_AGENT_ID) {
+	envLogger.warn(
+		"ELEVENLABS_AGENT_ID not set. ElevenLabs voice features will not work.",
 	);
 }
 

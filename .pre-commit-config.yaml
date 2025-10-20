@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: sync-agents-to-claude
+        name: Sync AGENTS.md to Claude.md
+        entry: bash -c 'cp AGENTS.md Claude.md'
+        language: system
+        files: ^AGENTS\\.md$
+        pass_filenames: false
+      - id: validate-yaml
+        name: Validate YAML files
+        entry: bash -c 'cd app && bun x js-yaml "$@"' --
+        language: system
+        files: ^agents/.*\\.yaml$
+        pass_filenames: true
+      - id: run-tests
+        name: Run Tests with Bun
+        entry: bash -c 'cd app && bun test --timeout=5000'
+        language: system
+        files: ^app/.*\\.(ts|tsx)$
+        pass_filenames: false
+      - id: lint-and-type-check
+        name: Lint and Type Check with Biome
+        entry: bash -c 'cd app && bun run lint'
+        language: system
+        files: ^app/.*\\.(ts|tsx)$
+        pass_filenames: false

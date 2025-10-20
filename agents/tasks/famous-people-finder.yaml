@@ -1,0 +1,100 @@
+name: Find Famous People Born on Same Date
+description: Find notable figures born on the same month/day to create engagement and predict personality patterns
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - birth_date
+  properties:
+    birth_date:
+      type: string
+      description: Date of birth in YYYY-MM-DD format (we only use month and day)
+
+main:
+  # Extract month and day for matching
+  - evaluate:
+      birth_month_day: $ f"{_.birth_date[5:7]}-{_.birth_date[8:10]}"
+      display_date: $ f"{_.birth_date[5:7]}/{_.birth_date[8:10]}"
+
+  # Find famous people born on same date
+  - prompt: |-
+      List 7-10 diverse notable people born on {steps[0].output.display_date} (month/day only, ignore year).
+      
+      CRITICAL: Include DIVERSE categories to show personality range:
+      - Technologists (Steve Jobs, Elon Musk type)
+      - Artists (painters, musicians, creatives)
+      - Poets / Writers (literary figures)
+      - Leaders (political, military, business)
+      - Scientists (researchers, inventors)
+      - Athletes (competitive spirits)
+      - Entertainers (actors, performers)
+      - Philosophers / Thinkers
+      
+      This helps us predict the user's "animal spirit" - what type of energy they embody.
+      
+      CRITICAL: Return ONLY valid JSON array (no markdown, no code blocks).
+      Start with [ and end with ]. Do NOT wrap in ```json or ```.
+      
+      Example format:
+      [
+        {{"name": "Steve Jobs", "category": "Technologist", "known_for": "Co-founder of Apple, revolutionized personal computing", "birth_year": 1955, "personality_trait": "innovative"}},
+        {{"name": "Pablo Picasso", "category": "Artist", "known_for": "Spanish painter, founder of Cubism movement", "birth_year": 1881, "personality_trait": "creative"}}
+      ]
+      
+      Be factually accurate. Real historical/contemporary figures only.
+      Focus on successful, positive figures who show different life paths.
+      
+      display_date = {steps[0].output.display_date}
+    unwrap: true
+
+  # Parse famous people
+  - evaluate:
+      famous_cleaned: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      famous_people: $ json.loads(steps[2].output.famous_cleaned)
+
+  # Analyze personality patterns
+  - prompt: |-
+      Based on these famous people born on {steps[0].output.display_date}:
+      {steps[3].output.famous_people}
+      
+      Analyze the PATTERNS and ENERGY:
+      - What categories appear most? (technologist, artist, leader, etc.)
+      - What personality traits dominate?
+      - What "animal spirit" does this date embody?
+      - What paths do people born on this date tend to take?
+      
+      CRITICAL: Return ONLY valid JSON (no markdown, no code blocks).
+      Start with {{ and end with }}. Do NOT wrap in ```json or ```.
+      
+      Required format:
+      {{
+        "dominant_categories": ["Technologist", "Artist"],
+        "common_traits": ["innovative", "creative", "driven", "visionary"],
+        "animal_spirit": "The Innovator",
+        "life_path_prediction": "2-3 sentences about what this person might become based on patterns",
+        "energy_description": "Describe the cosmic energy of this date in 2-3 mystical sentences"
+      }}
+      
+      Make it mystical and intriguing.
+      
+      display_date = {steps[0].output.display_date}
+      famous_people = {steps[3].output.famous_people}
+    unwrap: true
+
+  # Parse personality analysis
+  - evaluate:
+      analysis_cleaned: $ steps[4].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      personality_analysis: $ json.loads(steps[5].output.analysis_cleaned)
+
+  # Return complete famous people data
+  - return:
+      success: true
+      birth_date: $ _.birth_date
+      famous_people: $ steps[3].output.famous_people
+      personality_analysis: $ steps[6].output.personality_analysis
+      calculated_at: $ datetime.now().isoformat()

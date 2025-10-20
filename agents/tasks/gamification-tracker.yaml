@@ -1,0 +1,312 @@
+# DEPRECATED: This task is not used.
+# Gamification metrics are calculated directly in MongoDB for better performance.
+# See: app/src/app/api/tasks/gamification/route.ts
+#
+# This file is kept for reference but should not be executed.
+
+name: Update Gamification Metrics (DEPRECATED)
+description: Track user engagement metrics, streaks, milestones, and progress
+project: astra
+
+input_schema:
+  type: object
+  required:
+    - julep_user_id
+  properties:
+    julep_user_id:
+      type: string
+      description: The Julep user ID
+    conversation_id:
+      type: string
+      description: The conversation ID that triggered this update
+    event_type:
+      type: string
+      enum:
+        - conversation_completed
+        - birth_data_completed
+        - chart_generated
+        - milestone_unlocked
+      default: conversation_completed
+      description: Type of event triggering the update
+
+tools:
+  - name: search_gamification
+    description: Search for existing gamification document
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: search_all_notes
+    description: Count total conversations from notes
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: search_profile
+    description: Check profile completeness
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: search_topics
+    description: Get all conversation topics
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: search
+
+  - name: create_gamification_doc
+    description: Create or update gamification document
+    type: system
+    system:
+      resource: user
+      subresource: doc
+      operation: create
+
+main:
+  # Step 1: Get existing gamification data
+  - tool: search_gamification
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "gamification"
+      metadata_filter:
+        type: "gamification"
+        scope: "background"
+      limit: 1
+
+  # Step 2: Count total conversations from notes
+  - tool: search_all_notes
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "conversation"
+      metadata_filter:
+        type: "notes"
+        scope: "frontline"
+      limit: 1000
+
+  # Step 3: Get profile for completeness check
+  - tool: search_profile
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "profile"
+      metadata_filter:
+        type: "profile"
+        scope: "frontline"
+      limit: 1
+
+  # Step 4: Get unique topics from all conversations
+  - tool: search_topics
+    arguments:
+      user_id: $ _.julep_user_id
+      text: "topics"
+      metadata_filter:
+        type: "notes"
+      limit: 1000
+
+  # Step 5: Extract existing metrics or initialize
+  - evaluate:
+      existing_doc: $ steps[0].output.docs[0] if len(steps[0].output.docs) > 0 else None
+      existing_metadata: $ _.existing_doc.metadata if _.existing_doc else {}
+
+      # Current totals
+      total_conversations: $ len(steps[1].output.docs)
+
+      # Extract profile completeness
+      profile_doc: $ steps[2].output.docs[0] if len(steps[2].output.docs) > 0 else None
+      profile_content: $ _.profile_doc.content[0] if _.profile_doc and len(_.profile_doc.content) > 0 else ""
+
+      has_birth_date: $ "Date of Birth:" in _.profile_content or "date of birth" in _.profile_content.lower()
+      has_birth_time: $ "Birth Time:" in _.profile_content or "birth time" in _.profile_content.lower()
+      has_birth_location: $ "Birth Location:" in _.profile_content or "birth location" in _.profile_content.lower()
+      has_timezone: $ "Timezone:" in _.profile_content or "timezone" in _.profile_content.lower()
+
+      chart_completion_fields: $ sum([_.has_birth_date, _.has_birth_time, _.has_birth_location, _.has_timezone])
+      chart_completion_percent: $ int((_.chart_completion_fields / 4.0) * 100)
+
+      # Extract unique topics
+      all_topics: $ []
+
+  # Step 6: Collect unique topics from all notes
+  - foreach:
+      in: $ steps[3].output.docs
+      do:
+        - evaluate:
+            doc_topics: $ _.item.metadata.topics if "topics" in _.item.metadata else []
+        - evaluate:
+            all_topics: $ _.all_topics + _.doc_topics
+
+  # Step 7: Calculate unique topics
+  - evaluate:
+      unique_topics: $ list(set(_.all_topics)) if len(_.all_topics) > 0 else []
+      insights_count: $ len(steps[3].output.docs)
+
+  # Step 8: Calculate streak
+  - evaluate:
+      # Get conversation dates from last 30 days
+      recent_notes: $ [doc for doc in steps[1].output.docs if "timestamp_iso" in doc.metadata]
+
+      # Sort by timestamp descending
+      sorted_notes: $ sorted(_.recent_notes, key=lambda x: x.metadata["timestamp_iso"], reverse=True)
+
+      # Calculate streak
+      current_streak: $ 0
+      last_date: $ None
+
+  # Step 9: Simple streak calculation (consecutive days)
+  - evaluate:
+      # For now, use simplified streak: conversations in last N days
+      days_with_conversations: $ len(set([doc.metadata["timestamp_iso"][:10] for doc in _.sorted_notes if "timestamp_iso" in doc.metadata]))
+      current_streak: $ _.days_with_conversations if _.days_with_conversations > 0 else 0
+
+      # Previous streak from metadata
+      previous_streak: $ int(_.existing_metadata.get("streak_days", 0))
+
+      # Determine if streak increased
+      streak_increased: $ _.current_streak > _.previous_streak
+
+      # Previous best streak
+      best_streak: $ max(int(_.existing_metadata.get("best_streak", 0)), _.current_streak)
+
+  # Step 10: Determine milestones
+  - evaluate:
+      previous_milestones: $ _.existing_metadata.get("milestones", []) if _.existing_metadata else []
+
+      new_milestones: []
+
+      # Check for new milestones
+      milestone_checks:
+        first_conversation: $ _.total_conversations >= 1 and "first_conversation" not in _.previous_milestones
+        streak_3: $ _.current_streak >= 3 and "streak_3" not in _.previous_milestones
+        conversations_10: $ _.total_conversations >= 10 and "conversations_10" not in _.previous_milestones
+        conversations_25: $ _.total_conversations >= 25 and "conversations_25" not in _.previous_milestones
+        conversations_50: $ _.total_conversations >= 50 and "conversations_50" not in _.previous_milestones
+        conversations_100: $ _.total_conversations >= 100 and "conversations_100" not in _.previous_milestones
+        full_chart: $ _.chart_completion_percent >= 100 and "full_chart" not in _.previous_milestones
+        explorer: $ len(_.unique_topics) >= 5 and "explorer" not in _.previous_milestones
+
+  # Step 11: Build milestone list
+  - evaluate:
+      all_milestones: $ _.previous_milestones.copy()
+
+  - if: $ _.milestone_checks["first_conversation"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["first_conversation"]
+          new_milestones: $ _.new_milestones + ["🎯 First Conversation"]
+
+  - if: $ _.milestone_checks["streak_3"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["streak_3"]
+          new_milestones: $ _.new_milestones + ["🔥 3-Day Streak"]
+
+  - if: $ _.milestone_checks["conversations_10"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["conversations_10"]
+          new_milestones: $ _.new_milestones + ["⭐ 10 Conversations"]
+
+  - if: $ _.milestone_checks["conversations_25"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["conversations_25"]
+          new_milestones: $ _.new_milestones + ["🌟 25 Conversations"]
+
+  - if: $ _.milestone_checks["conversations_50"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["conversations_50"]
+          new_milestones: $ _.new_milestones + ["🚀 50 Conversations"]
+
+  - if: $ _.milestone_checks["conversations_100"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["conversations_100"]
+          new_milestones: $ _.new_milestones + ["🏆 100 Conversations"]
+
+  - if: $ _.milestone_checks["full_chart"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["full_chart"]
+          new_milestones: $ _.new_milestones + ["📊 Full Chart Completion"]
+
+  - if: $ _.milestone_checks["explorer"]
+    then:
+      - evaluate:
+          all_milestones: $ _.all_milestones + ["explorer"]
+          new_milestones: $ _.new_milestones + ["🗺️ Topic Explorer (5+ topics)"]
+
+  # Step 12: Build content summary
+  - evaluate:
+      content_summary: $ f"""
+**Gamification Progress**
+
+📈 **Stats:**
+- Current Streak: {_.current_streak} day{'s' if _.current_streak != 1 else ''}
+- Best Streak: {_.best_streak} day{'s' if _.best_streak != 1 else ''}
+- Total Conversations: {_.total_conversations}
+- Topics Explored: {', '.join(_.unique_topics[:10]) if len(_.unique_topics) > 0 else 'None yet'}
+- Insights Unlocked: {_.insights_count}
+- Chart Completion: {_.chart_completion_percent}%
+
+🎯 **Milestones Unlocked ({len(_.all_milestones)}):**
+{chr(10).join(['- ' + m for m in [
+  '🎯 First Conversation' if 'first_conversation' in _.all_milestones else None,
+  '🔥 3-Day Streak' if 'streak_3' in _.all_milestones else None,
+  '⭐ 10 Conversations' if 'conversations_10' in _.all_milestones else None,
+  '🌟 25 Conversations' if 'conversations_25' in _.all_milestones else None,
+  '🚀 50 Conversations' if 'conversations_50' in _.all_milestones else None,
+  '🏆 100 Conversations' if 'conversations_100' in _.all_milestones else None,
+  '📊 Full Chart Completion' if 'full_chart' in _.all_milestones else None,
+  '🗺️ Topic Explorer' if 'explorer' in _.all_milestones else None
+] if m is not None])}
+
+{f"🎊 **New Milestones This Update:** {', '.join(_.new_milestones)}" if len(_.new_milestones) > 0 else ""}
+"""
+
+  # Step 13: Create gamification document
+  - tool: create_gamification_doc
+    arguments:
+      user_id: $ _.julep_user_id
+      title: "Gamification Progress"
+      content:
+        - $ _.content_summary
+      metadata:
+        type: "gamification"
+        scope: "background"
+        shared: true
+        updated_by: $ _.current_task_id or "gamification-tracker"
+        timestamp_iso: $ datetime.now().isoformat()
+        source: $ _.event_type
+
+        # Metrics for easy querying
+        streak_days: $ _.current_streak
+        best_streak: $ _.best_streak
+        total_conversations: $ _.total_conversations
+        topics: $ _.unique_topics
+        insights_count: $ _.insights_count
+        chart_completion_percent: $ _.chart_completion_percent
+        milestones: $ _.all_milestones
+        new_milestones_this_update: $ _.new_milestones
+
+        # Event tracking
+        last_conversation_id: $ _.conversation_id if "conversation_id" in _ else None
+        last_event_type: $ _.event_type
+
+  # Step 14: Return summary
+  - return:
+      success: true
+      current_streak: $ _.current_streak
+      best_streak: $ _.best_streak
+      total_conversations: $ _.total_conversations
+      chart_completion_percent: $ _.chart_completion_percent
+      milestones_unlocked: $ len(_.all_milestones)
+      new_milestones: $ _.new_milestones
+      topics_explored: $ len(_.unique_topics)
