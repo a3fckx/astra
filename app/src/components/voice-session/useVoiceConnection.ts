@@ -124,7 +124,6 @@ export function useVoiceConnection({
 			console.info("[ElevenLabs] Attempting to trigger transcript processing", {
 				conversationId,
 				detailsKeys: details ? Object.keys(details) : [],
-				hasConversationRef: !!conversationRef.current,
 				storedConversationId: currentConversationIdRef.current,
 			});
 
