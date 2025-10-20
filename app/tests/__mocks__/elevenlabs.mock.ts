@@ -82,18 +82,20 @@ export function createMockSessionHandshake(
 			},
 			workflowId: "astra-responder",
 			julep: {
-				sessionId: "julep_session_mock_123",
+				sessionId: "fake_julep_session_id_for_testing",
 				...overrides?.session?.julep,
 			},
 			...overrides?.session,
 		},
 		integrations: {
 			elevenlabs: {
-				token: "el_mock_token_123",
+				// ggignore - This is a fake test token, not a real secret
+				token: "fake_elevenlabs_token_for_testing",
 				...overrides?.integrations?.elevenlabs,
 			},
 			memoryStore: {
-				token: "ms_mock_token_123",
+				// ggignore - This is a fake test token, not a real secret
+				token: "fake_memory_store_token_for_testing",
 				...overrides?.integrations?.memoryStore,
 			},
 			...overrides?.integrations,
@@ -116,12 +118,13 @@ export function createMockSessionHandshakeMinimal(): SessionHandshake {
 			},
 			workflowId: "astra-responder",
 			julep: {
-				sessionId: "julep_new_session_123",
+				sessionId: "fake_julep_session_id_for_testing_minimal",
 			},
 		},
 		integrations: {
 			elevenlabs: {
-				token: "el_new_token_123",
+				// ggignore - This is a fake test token, not a real secret
+				token: "fake_elevenlabs_token_for_testing_minimal",
 			},
 		},
 		prompt: null,
@@ -144,7 +147,8 @@ export function createMockSessionHandshakeNoJulep(): SessionHandshake {
 		},
 		integrations: {
 			elevenlabs: {
-				token: "el_token_123",
+				// ggignore - This is a fake test token, not a real secret
+				token: "fake_elevenlabs_token_for_testing_no_julep",
 			},
 		},
 		prompt: null,
@@ -165,7 +169,7 @@ export function createMockSessionHandshakeNoTokens(): SessionHandshake {
 			},
 			workflowId: "astra-responder",
 			julep: {
-				sessionId: "julep_session_123",
+				sessionId: "fake_julep_session_id_for_testing_no_tokens",
 			},
 		},
 		integrations: {},
@@ -183,8 +187,9 @@ export function createMockDynamicVariables(
 	return {
 		user_name: "Test User",
 		workflow_id: "astra-responder",
-		julep_session_id: "julep_session_mock_123",
-		elevenlabs_user_token: "el_mock_token_123",
+		julep_session_id: "fake_julep_session_id_for_testing",
+		// ggignore - This is a fake test token, not a real secret
+		elevenlabs_user_token: "fake_elevenlabs_user_token_for_testing",
 		date_of_birth: "1990-01-15",
 		birth_time: "14:30",
 		birth_place: "New Delhi, India",
