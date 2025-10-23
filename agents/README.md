@@ -1,20 +1,29 @@
-# Agents Directory
+# Agents Directory — Julep Background Processing
 
-> **Purpose:** Julep agent definitions and task workflows for Astra's background processing system  
+> **Purpose:** Background task workflows for Astra's data processing system  
 > **Important:** All agents here are BACKGROUND ONLY - they never interact with users directly
 
 ---
 
 ## Overview
 
-This directory contains:
-- **Agent Definitions** (`definitions/`) - Julep agent configurations
-- **Task Workflows** (`tasks/`) - YAML-defined background tasks
+This directory contains Julep agent definitions and task workflows that run asynchronously after voice conversations end.
 
 **Critical Understanding:**
-- **ElevenLabs agents** = Frontline (talk to users)
-- **Julep agents** = Background (process data, never see users)
-- **MongoDB** = Source of truth (stores all results)
+- **ElevenLabs agents** = Frontline (talk to users with voice)
+- **Julep agents** = Background (process data, return JSON)
+- **MongoDB** = Source of truth (stores all results in `user_overview`)
+
+**Data Flow:**
+```
+User conversation → ElevenLabs agent (with MongoDB context)
+  ↓
+Conversation ends → Julep task triggered
+  ↓
+Task processes transcript → Returns JSON
+  ↓
+JSON synced to MongoDB → Available for next conversation
+```
 
 ---
 
@@ -23,14 +32,14 @@ This directory contains:
 ```
 agents/
 ├── definitions/
-│   └── astra.yaml              # Background Worker Agent
+│   └── astra.yaml              # Background Worker Agent (reference only)
 ├── tasks/
-│   ├── transcript-processor-simple.yaml
-│   ├── chart-calculator.yaml
-│   ├── gamification-tracker.yaml
-│   ├── weekly-report-generator.yaml
-│   ├── horoscope-refresher.yaml
-│   └── persona-enrichment.yaml
+│   ├── transcript-processor.yaml   # ✅ WORKING: Extract insights from conversations
+│   ├── chart-calculator.yaml       # ✅ WORKING: Generate Vedic/Western birth charts
+│   ├── gamification-tracker.yaml  # 🚧 Planned
+│   ├── weekly-report-generator.yaml # 🚧 Planned
+│   ├── horoscope-refresher.yaml   # 🚧 Planned
+│   └── persona-enrichment.yaml    # 🚧 Planned
 └── README.md                   # This file
 ```
 
@@ -38,13 +47,13 @@ agents/
 
 ## Background Worker Agent
 
-**File:** `definitions/astra.yaml`
+**File:** `definitions/astra.yaml` (reference only, not used for deployment)
 
 **Purpose:** Execute all background tasks asynchronously
 
 **Key Properties:**
-- **Model:** Claude 3.5 Sonnet (via OpenRouter)
-- **Project:** `astra` (MUST match for all resources)
+- **Model:** Gemini 2.5 Flash (fast, cost-effective)
+- **Project:** `astra` (scoped to project)
 - **Never interacts with users** - only processes data
 - **Returns JSON** that gets synced to MongoDB
 
@@ -53,17 +62,18 @@ agents/
 BACKGROUND_WORKER_AGENT_ID=agent_xyz123
 ```
 
-**Creating the Agent:**
+**Creating the Agent (One-Time Setup):**
 ```javascript
 import { Julep } from '@julep/sdk';
-import fs from 'fs';
-import yaml from 'yaml';
 
 const client = new Julep({ apiKey: process.env.JULEP_API_KEY });
 
-const agentDef = yaml.parse(fs.readFileSync('agents/definitions/astra.yaml', 'utf8'));
-
-const agent = await client.agents.create(agentDef);
+const agent = await client.agents.create({
+  name: "Astra Background Worker",
+  model: "gemini-2.5-flash",
+  about: "Background processing agent for Astra astrology companion",
+  instructions: "Process transcripts, generate charts, and return structured JSON for MongoDB sync"
+});
 
 console.log('Agent ID:', agent.id);
 // Save to .env: BACKGROUND_WORKER_AGENT_ID=agent_xyz123
@@ -71,321 +81,447 @@ console.log('Agent ID:', agent.id);
 
 ---
 
-## Task Workflows
+## Working Tasks
 
-All tasks follow this pattern:
+### 1. Transcript Processor ✅
 
-```yaml
-name: Task Name
-project: astra
+**File:** `tasks/transcript-processor.yaml`
 
-input_schema:
-  type: object
-  required: [julep_user_id, ...]
-  properties:
-    julep_user_id: { type: string }
+**Purpose:** Extract insights, preferences, and birth data from conversation transcripts
 
-tools:
-  - name: search_user_docs
-    type: system
-    # ... tool definition
-
-main:
-  # Task steps (prompts, tool calls, evaluations)
-  
-  # CRITICAL: Return JSON for MongoDB sync
-  - return:
-      field_name: value
-      nested_object:
-        key: value
-```
-
----
-
-## Task Descriptions
-
-### transcript-processor-simple.yaml
-
-**Purpose:** Extract insights from conversation transcripts
+**Trigger:** Automatic after every conversation ends
 
 **Input:**
-- `julep_user_id`: Julep user ID
-- `conversation_id`: ElevenLabs conversation ID
-- `transcript_text`: Full transcript text
+```typescript
+{
+  julep_user_id: string;
+  conversation_id: string;
+  transcript_text: string;
+  existing_overview: object;  // Current user_overview from MongoDB
+}
+```
 
 **Process:**
-1. Analyze transcript with Claude
-2. Extract birth details (date, time, location)
-3. Extract preferences (topics, style, tone)
+1. Analyze transcript with LLM (Gemini 2.5 Flash)
+2. Extract birth details (time in HH:MM 24-hour, location)
+3. Extract preferences (communication style, topics, Hinglish level)
 4. Generate conversation summary
-5. Identify key insights and questions
+5. Identify key insights and incident map entries
+6. Create personalized first message for next session
 
 **Output (returned to API):**
 ```yaml
 return:
+  overview_updates:
+    profile_summary: "Updated personality summary..."
+    preferences: {communication_style, topics_of_interest, hinglish_level, flirt_opt_in}
+    insights: [{type, content, generated_at}]
+  conversation_summary:
+    summary: "User discussed..."
+    topics: ["intelligence", "memory"]
+    key_insights: ["Working on background agents"]
+    emotional_tone: "curious"
   birth_details:
-    date: "1990-08-15"
-    time: "14:30"
-    location: "Mumbai, India"
-    timezone: "Asia/Kolkata"
-  preferences:
-    communication_style: "casual"
-    hinglish_level: "medium"
-    topics_of_interest: ["career", "relationships"]
-  summary: "User asked about career timing..."
-  insights: ["Considering job change"]
-  questions: ["When is good time for career change?"]
-  topics: ["career"]
+    birth_time: "07:15"  # HH:MM 24-hour format
+    city: "Jhajjar"
+    country: "India"
+    place_text: "Jhajjar, Haryana, India"
+  incident_map:
+    - title: "Background Agents Vision"
+      description: "User detailed work on background agents..."
+      tags: ["innovation", "AI"]
+  first_message: "I sense those realms of intelligence..."
 ```
 
 **MongoDB Sync:**
-- Updates `user.date_of_birth`, `birth_time`, `birth_location`
+- Updates `user.birth_time`, `birth_location`, `birth_timezone`
 - Updates `user_overview.preferences`
 - Adds to `user_overview.recent_conversations`
+- Updates `user_overview.incident_map`
+- Updates `user_overview.first_message`
+
+**API Endpoint:** `app/src/app/api/tasks/transcript/route.ts`
 
 ---
 
-### chart-calculator.yaml
+### 2. Chart Calculator ✅
 
-**Purpose:** Generate Vedic/Western birth charts
+**File:** `tasks/chart-calculator.yaml`
+
+**Purpose:** Generate Vedic and Western astrology birth charts with culturally aware famous people
+
+**Trigger:** Automatic when all birth data present (date + time + location) AND chart doesn't exist
 
 **Input:**
-- `julep_user_id`: Julep user ID
-- Birth data from MongoDB (passed or queried)
+```typescript
+{
+  birth_date: string;      // YYYY-MM-DD
+  birth_time: string;      // HH:MM 24-hour
+  birth_location: string;  // "City, Country"
+  birth_timezone: string;  // "Asia/Kolkata"
+  ayanamsha: string;       // "lahiri"
+}
+```
 
 **Process:**
-1. Validate birth data completeness
-2. Calculate planetary positions
-3. Determine houses, signs, aspects
-4. Generate human-readable summary
+1. **Step 0:** Prepare context variables (CRITICAL pattern for all tasks)
+2. **Steps 1-3:** Generate Vedic chart (sidereal zodiac)
+   - Sun, Moon, Ascendant signs
+   - 9 planets with houses, degrees, nakshatras
+   - Current Dasha period
+   - Chart summary
+3. **Steps 4-6:** Generate Western chart (tropical zodiac)
+   - Sun, Moon, Rising signs
+   - 10 planets with houses, degrees
+   - Major aspects
+   - Chart summary
+4. **Steps 7-9:** Find famous people born on same date
+   - Cultural awareness (prioritize user's region)
+   - 5-7 diverse categories
+   - Include origin field
 
 **Output:**
 ```yaml
 return:
+  success: true
   birth_chart:
-    system: "vedic"
-    sun_sign: "Leo"
-    moon_sign: "Pisces"
-    rising_sign: "Gemini"
-    planets:
-      - name: "Sun"
-        sign: "Leo"
-        house: 5
-        degree: "23°45'"
-    chart_text: "Human-readable summary..."
-    calculated_at: "2025-01-15T10:30:00Z"
+    vedic:
+      sun_sign: "Cancer"
+      moon_sign: "Libra"
+      ascendant: "Leo"
+      planets: [{name, sign, house, degree, nakshatra, retrograde}]
+      dasha: {current_mahadasha, current_antardasha, start_date}
+      chart_summary: "Personality insights..."
+    western:
+      sun_sign: "Leo"
+      moon_sign: "Aries"
+      rising_sign: "Cancer"
+      planets: [{name, sign, house, degree, retrograde}]
+      aspects: [{type, planets, orb}]
+      chart_summary: "Personality insights..."
+    famous_people:
+      - name: "Steve Martin"
+        category: "Artist"
+        known_for: "Celebrated comedian..."
+        birth_year: 1945
+        origin: "United States"
 ```
 
 **MongoDB Sync:**
-- Updates `user_overview.birth_chart`
+- Updates `user_overview.birth_chart` (stored permanently, never recalculated)
+
+**API Endpoint:** `app/src/app/api/tasks/chart/route.ts`
+
+**Fire-and-Forget:** Triggered from `transcript-processor.ts:544-608`, runs in background
 
 ---
 
-### gamification-tracker.yaml
+## Creating New Tasks — Complete Guide
 
-**Purpose:** Track engagement metrics and milestones
+### Step-by-Step Process
 
-**Input:**
-- `julep_user_id`: Julep user ID
-- `conversation_id`: Latest conversation
-- `event_type`: Trigger type
+#### 1. Create YAML Task Definition
 
-**Process:**
-1. Count total conversations from MongoDB
-2. Calculate streak (consecutive days)
-3. Check profile completeness
-4. Detect milestone unlocks
-5. Extract unique topics
+**Location:** `agents/tasks/your-task-name.yaml`
 
-**Output:**
+**CRITICAL YAML Rules (Learned from Chart Calculator Debug):**
+
+**✅ DO:**
+- **Always prepare context in step 0** with `evaluate` block
+- Reference variables as `{steps[N].output.variable_name}` in prompts
+- **Describe JSON structure in text**, not actual JSON with braces
+- Clean LLM output with `removeprefix`/`removesuffix` before parsing
+- Use `$ expression` for all dynamic values
+- Use `json.loads()` to parse JSON strings from LLM
+- Return flat objects or use evaluate step to build nested structures
+- Use string concatenation (`+`) instead of f-strings with complex expressions
+
+**❌ DON'T:**
+- Use `{_.field}` directly in prompts (won't resolve, causes f-string errors)
+- Show JSON examples with curly braces `{}` in prompts (causes f-string parse errors)
+- Use f-strings with quotes inside (escaping issues)
+- Use `datetime.now()` in tasks (add timestamps in TypeScript instead)
+- Return nested objects directly in return step
+- Include `project: astra` in YAML (handled by SDK)
+
+**Template Structure:**
 ```yaml
-return:
-  gamification:
-    streak_days: 5
-    best_streak: 7
-    total_conversations: 23
-    milestones_unlocked:
-      - "first_conversation"
-      - "streak_3"
-      - "conversations_10"
-    topics_explored: ["career", "relationships"]
-    chart_completion_percent: 80
+name: Your Task Name
+description: Brief description
+
+input_schema:
+  type: object
+  required: [field1, field2]
+  properties:
+    field1:
+      type: string
+      description: Description
+
+main:
+  # Step 0: ALWAYS prepare context first
+  - evaluate:
+      context_var1: $ _.field1
+      context_var2: $ _.field2 or "default"
+      json_context: $ json.dumps(_.object_field or {}, indent=2)
+
+  # Step 1: LLM prompt (use steps[0].output.variable_name)
+  - prompt: |-
+      You are a [role]. Analyze this data.
+      
+      Input: {steps[0].output.context_var1}
+      Context: {steps[0].output.context_var2}
+      
+      CRITICAL: Return ONLY valid JSON. No markdown, no code blocks.
+      Do NOT wrap in backticks. Start with opening brace, end with closing brace.
+      
+      REQUIRED JSON STRUCTURE:
+      Return a JSON object with these keys:
+      - field1: string (description of field)
+      - field2: array of strings
+      - field3: object with subfield1 and subfield2
+      
+      DO NOT show JSON examples with braces - describe structure only.
+    unwrap: true
+
+  # Step 2: Clean LLM output
+  - evaluate:
+      cleaned: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  # Step 3: Parse JSON
+  - evaluate:
+      parsed: $ json.loads(steps[2].output.cleaned)
+
+  # Step 4: Build result (if nested structure needed)
+  - evaluate:
+      result_data:
+        field1: $ steps[3].output.parsed.get("field1")
+        field2: $ steps[3].output.parsed.get("field2", [])
+
+  # Step 5: Return for MongoDB sync
+  - return:
+      success: $ True
+      data: $ steps[4].output.result_data
 ```
 
-**Milestones:**
-- `first_conversation`: First chat
-- `streak_3`: 3-day streak
-- `conversations_10`, `conversations_25`, `conversations_50`, `conversations_100`
-- `full_chart`: 100% birth data
-- `topic_explorer`: 5+ topics discussed
+**Common Pitfalls (From Chart Calculator Debug):**
 
-**MongoDB Sync:**
-- Updates `user_overview.gamification`
-
----
-
-### weekly-report-generator.yaml
-
-**Purpose:** Create companion-style weekly summaries
-
-**Input:**
-- `julep_user_id`: Julep user ID
-- `week_start_date`: Optional start date
-
-**Process:**
-1. Fetch week's conversations from Julep docs
-2. Fetch week's horoscopes
-3. Get gamification progress
-4. Generate warm, personalized report
-5. Respect user's Hinglish level
-
-**Output:**
+**❌ BAD - Direct variable in prompt:**
 ```yaml
-return:
-  weekly_report:
-    week_start: "2025-01-09"
-    week_end: "2025-01-15"
-    content: "Full report text..."
-    stats:
-      conversations_this_week: 5
-      topics_discussed: ["career"]
-      current_streak: 7
+- prompt: |-
+    Birth Date: {_.birth_date}  # FAILS: f-string error
 ```
 
-**MongoDB Sync:**
-- Updates `user_overview.latest_report` (if added to schema)
-- Or stores in separate reports collection
-
----
-
-### horoscope-refresher.yaml
-
-**Purpose:** Generate daily personalized horoscopes
-
-**Input:**
-- `julep_user_id`: Julep user ID
-
-**Process:**
-1. Get user's birth chart from Julep docs
-2. Calculate current planetary transits
-3. Generate personalized predictions
-4. Provide practical guidance
-
-**Output:**
+**✅ GOOD - Prepare in evaluate first:**
 ```yaml
-return:
-  horoscope:
-    date: "2025-01-16"
-    content: "Full horoscope text (2-3 paragraphs)..."
-    signs:
-      sun: "Leo"
-      moon: "Pisces"
-    transits: ["Mercury in Capricorn"]
+- evaluate:
+    birth_date_val: $ _.birth_date
+
+- prompt: |-
+    Birth Date: {steps[0].output.birth_date_val}  # WORKS
 ```
 
-**MongoDB Sync:**
-- Updates `user_overview.latest_horoscope`
-
----
-
-### persona-enrichment.yaml
-
-**Purpose:** Analyze conversation patterns to enrich preferences
-
-**Input:**
-- `julep_user_id`: Julep user ID
-- `min_conversations`: Minimum conversations required
-
-**Process:**
-1. Fetch all conversation notes
-2. Analyze patterns (topics, tone, style)
-3. Extract recurring themes
-4. Update preferences
-
-**Output:**
+**❌ BAD - JSON example with braces:**
 ```yaml
-return:
-  preferences:
-    communication_style: "casual"
-    topics_of_interest: ["career", "relationships"]
-    emotional_patterns: ["curious", "optimistic"]
+- prompt: |-
+    Return JSON like:
+    {
+      "name": "value"  # FAILS: f-string parse error
+    }
 ```
 
-**MongoDB Sync:**
-- Updates `user_overview.preferences`
-
----
-
-## Task Metadata Schema
-
-All tasks write to Julep docs during processing with this metadata:
-
+**✅ GOOD - Describe structure:**
 ```yaml
-metadata:
-  type: profile | preferences | horoscope | notes | analysis | chart | gamification | reports
-  scope: background  # Always "background" for task outputs
-  shared: true       # Always true for cross-agent access
-  updated_by: task_execution_id
-  timestamp_iso: "2025-01-15T10:30:00Z"
-  source: transcript | calculation | scheduled_task
+- prompt: |-
+    Return a JSON object with these keys:
+    - name: string (person's name)
+    - age: number (person's age)
+```
+
+**❌ BAD - Complex f-string:**
+```yaml
+- evaluate:
+    text: $ f"{_.date} at {_.time} in {_.location}"  # FAILS: quote escaping
+```
+
+**✅ GOOD - String concatenation:**
+```yaml
+- evaluate:
+    text: $ _.date + " at " + _.time + " in " + _.location
+```
+
+#### 2. Register Task in Loader
+
+**File:** `app/src/lib/tasks/loader.ts`
+
+```typescript
+const TASK_REGISTRY = {
+  TRANSCRIPT_PROCESSOR: 'transcript-processor.yaml',
+  CHART_CALCULATOR: 'chart-calculator.yaml',
+  YOUR_NEW_TASK: 'your-task-name.yaml',  // Add here
+} as const;
+```
+
+#### 3. Create Test Script
+
+**File:** `app/scripts/test-your-task.ts`
+
+```typescript
+import { getBackgroundWorkerAgentId, julepClient } from '@/lib/julep-client';
+import { loadTaskDefinition } from '@/lib/tasks/loader';
+
+const taskDef = loadTaskDefinition('YOUR_NEW_TASK');
+const agentId = getBackgroundWorkerAgentId();
+
+const result = await julepClient.createAndExecuteTask(
+  agentId,
+  taskDef,
+  {
+    // Task input
+    field1: 'test value',
+    field2: 'test value 2',
+  },
+  {
+    maxAttempts: 60,
+    intervalMs: 2000,
+    onProgress: (status, attempt) => {
+      console.log(`[${attempt}] Status: ${status}`);
+    },
+  }
+);
+
+console.log('Result:', result.status);
+if (result.status === 'succeeded') {
+  console.log('Output:', JSON.stringify(result.output, null, 2));
+} else {
+  console.error('Error:', result.error);
+}
+
+process.exit(0);
+```
+
+**Run:** `bun run scripts/test-your-task.ts`
+
+#### 4. Create API Endpoint (Optional)
+
+**File:** `app/src/app/api/tasks/your-task/route.ts`
+
+```typescript
+import { auth } from "@/lib/auth";
+import { getBackgroundWorkerAgentId, julepClient } from "@/lib/julep-client";
+import { loadTaskDefinition } from "@/lib/tasks/loader";
+import { getUsers } from "@/lib/mongo";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { input_field } = await request.json();
+  
+  const users = getUsers();
+  const user = await users.findOne({ id: session.user.id });
+  
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  const taskDef = loadTaskDefinition('YOUR_NEW_TASK');
+  const agentId = getBackgroundWorkerAgentId();
+
+  const result = await julepClient.createAndExecuteTask(
+    agentId,
+    taskDef,
+    {
+      input_field,
+      julep_user_id: user.julep_user_id,
+    },
+    {
+      maxAttempts: 60,
+      intervalMs: 2000,
+    }
+  );
+
+  if (result.status !== 'succeeded') {
+    return NextResponse.json(
+      { error: result.error || 'Task failed' },
+      { status: 500 }
+    );
+  }
+
+  // Sync to MongoDB
+  await users.updateOne(
+    { id: user.id },
+    {
+      $set: {
+        'user_overview.your_field': result.output.data,
+        'user_overview.last_updated': new Date(),
+      },
+    }
+  );
+
+  return NextResponse.json({ success: true, data: result.output });
+}
+```
+
+#### 5. Update MongoDB Types
+
+**File:** `app/src/lib/mongo.ts`
+
+```typescript
+export type UserOverview = {
+  // ... existing fields
+  your_new_field?: YourDataType;
+};
 ```
 
 ---
 
-## Executing Tasks
+## Task Execution Flow
 
-### Via API Endpoint
+### Via API Endpoint (Recommended)
 
-```javascript
+```typescript
 // POST /api/tasks/transcript
 const response = await fetch('/api/tasks/transcript', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    conversation_id: 'conv_abc123',
-    user_id: 'user_xyz789'
-  })
+    conversation_id: 'conv_abc123'
+  }),
+  credentials: 'include'  // Required for session auth
 });
 
 const result = await response.json();
-// { success: true, task_id: '...', execution_id: '...' }
 ```
 
-### Manually with Julep SDK
+### Manual Execution (For Testing)
 
-```javascript
-import { Julep } from '@julep/sdk';
-import fs from 'fs';
-import yaml from 'yaml';
+```typescript
+import { julepClient } from '@/lib/julep-client';
+import { loadTaskDefinition } from '@/lib/tasks/loader';
 
-const client = new Julep({ apiKey: process.env.JULEP_API_KEY });
+// Load YAML definition from disk
+const taskDef = loadTaskDefinition('TRANSCRIPT_PROCESSOR');
 
-// Load task definition
-const taskYaml = fs.readFileSync('agents/tasks/transcript-processor-simple.yaml', 'utf8');
-const taskDef = yaml.parse(taskYaml);
-
-// Create task
-const task = await client.tasks.create(
+// Create task instance + execute + poll in one call
+const result = await julepClient.createAndExecuteTask(
   process.env.BACKGROUND_WORKER_AGENT_ID,
-  taskDef
-);
-
-// Execute task
-const execution = await client.executions.create(task.id, {
-  input: {
-    julep_user_id: 'julep_user_123',
+  taskDef,
+  {
+    julep_user_id: 'user_123',
     conversation_id: 'conv_abc',
     transcript_text: 'USER: Hello...'
+  },
+  {
+    maxAttempts: 120,  // 4 minutes max
+    intervalMs: 2000,   // Poll every 2s
+    onProgress: (status, attempt) => {
+      console.log(`[${attempt}] ${status}`);
+    }
   }
-});
-
-// Poll for completion
-let result;
-while (true) {
-  result = await client.executions.get(execution.id);
-  if (result.status === 'succeeded' || result.status === 'failed') break;
-  await new Promise(resolve => setTimeout(resolve, 2000));
-}
+);
 
 console.log('Output:', result.output);
 ```
@@ -394,185 +530,106 @@ console.log('Output:', result.output);
 
 ## MongoDB Sync Pattern
 
-After task completes, API endpoint syncs output to MongoDB:
+After task completes successfully, sync output to MongoDB:
 
-```javascript
-// In POST /api/tasks/transcript/route.ts
+```typescript
+const output = execution.output;
 
-const execution = await julepClient.executions.get(executionId);
-
-if (execution.status === 'succeeded') {
-  const output = execution.output;
-  
-  // Build MongoDB update
-  const updates = {
+// Build atomic update
+const updateDoc = {
+  $set: {
     'user_overview.last_updated': new Date(),
-    'user_overview.updated_by': executionId
-  };
-  
-  // Add birth data if extracted
-  if (output.birth_details?.date) {
-    updates.date_of_birth = new Date(output.birth_details.date);
-    updates.birth_time = output.birth_details.time;
-    updates.birth_location = output.birth_details.location;
+    'user_overview.updated_by': execution.id
   }
-  
-  // Add preferences if extracted
-  if (output.preferences) {
-    updates['user_overview.preferences'] = output.preferences;
-  }
-  
-  // Add to recent conversations
-  await mongoUsers.updateOne(
-    { id: userId },
-    {
-      $set: updates,
-      $push: {
-        'user_overview.recent_conversations': {
-          $each: [conversationSummary],
-          $slice: -10  // Keep last 10
-        }
-      }
-    }
-  );
+};
+
+// Add specific fields
+if (output.birth_details?.birth_time) {
+  updateDoc.$set.birth_time = output.birth_details.birth_time;
 }
+
+if (output.preferences) {
+  updateDoc.$set['user_overview.preferences'] = {
+    ...existingPreferences,
+    ...output.preferences
+  };
+}
+
+// Add to arrays (keep last N)
+if (output.conversation_summary) {
+  updateDoc.$push = {
+    'user_overview.recent_conversations': {
+      $each: [output.conversation_summary],
+      $slice: -10  // Keep last 10
+    }
+  };
+}
+
+await users.updateOne({ id: userId }, updateDoc);
 ```
-
----
-
-## YAML Validation
-
-### Pre-commit Hook
-
-Automatically validates YAML syntax on commit:
-
-```bash
-# Install pre-commit
-pip install pre-commit
-pre-commit install
-
-# Now validates on every commit
-git add agents/tasks/my-task.yaml
-git commit -m "Add task"
-# ↑ Auto-validates syntax
-```
-
-### Manual Validation
-
-```bash
-cd app && bun x js-yaml ../agents/tasks/my-task.yaml
-```
-
----
-
-## Creating New Tasks
-
-1. **Copy existing task as template:**
-   ```bash
-   cp agents/tasks/transcript-processor-simple.yaml agents/tasks/my-task.yaml
-   ```
-
-2. **Edit task definition:**
-   - Update `name` and `description`
-   - Define `input_schema`
-   - List required `tools`
-   - Write `main` workflow steps
-   - Ensure final `return` outputs JSON
-
-3. **Validate syntax:**
-   ```bash
-   cd app && bun x js-yaml ../agents/tasks/my-task.yaml
-   ```
-
-4. **Test task:**
-   ```bash
-   bun run scripts/test-task.ts my-task
-   ```
-
-5. **Create API endpoint:**
-   ```bash
-   # Create app/src/app/api/tasks/my-task/route.ts
-   ```
-
-6. **Implement MongoDB sync:**
-   - Extract task output
-   - Update `user_overview` fields
-   - Handle errors gracefully
 
 ---
 
 ## Best Practices
 
 ### Task Design
-
-- **Keep tasks focused** - One responsibility per task
-- **Always return JSON** - For MongoDB sync
-- **Use working memory** - Julep docs for intermediate data
-- **Handle errors** - Return clear error messages
-- **Document metadata** - Use proper metadata schema
+- Keep tasks focused (one responsibility)
+- Always return JSON for MongoDB sync
+- Handle errors gracefully
+- Use descriptive names for evaluate steps
 
 ### YAML Guidelines
-
-- **Consistent indentation** - 2 spaces
-- **Quote special chars** - Strings with `:` or `{}`
-- **Validate before commit** - Use pre-commit hook
-- **Comment complex logic** - Help future maintainers
+- Consistent 2-space indentation
+- Validate before commit (pre-commit hook)
+- Quote strings with special chars
+- Comment complex logic
 
 ### MongoDB Sync
-
-- **Atomic updates** - Use `$set` and `$push`
-- **Preserve history** - Don't overwrite arrays
-- **Track sources** - Include `updated_by`, `timestamp`
-- **Validate data** - Check types before writing
+- Use atomic updates (`$set`, `$push`)
+- Preserve history with `$slice`
+- Track sources (`updated_by`, `last_updated`)
+- Validate data types before writing
 
 ---
 
 ## Troubleshooting
 
-### Task execution fails
+### Task Execution Fails
 
 **Check:**
-1. Task YAML syntax valid?
+1. YAML syntax valid? (`bun x js-yaml task.yaml`)
 2. Input schema matches provided data?
-3. Tools defined correctly?
-4. Agent ID correct?
+3. Step references correct? (`steps[N].output.field`)
+4. Agent ID environment variable set?
 
 **Debug:**
-```javascript
-const execution = await client.executions.get(executionId);
+```typescript
+const execution = await julepClient.getExecution(executionId);
 console.log('Status:', execution.status);
-console.log('Error:', execution.error);
+console.log('Output:', execution.output);  // Shows error message
 ```
 
-### MongoDB sync fails
+### MongoDB Sync Fails
 
 **Check:**
-1. User exists in MongoDB?
-2. `julep_user_id` field populated?
-3. Update query correct?
-4. Field paths exist?
+1. User exists with `julep_user_id`?
+2. Field paths match schema?
+3. Data types correct?
 
 **Debug:**
-```javascript
-const user = await mongoUsers.findOne({ id: userId });
+```typescript
+const user = await users.findOne({ id: userId });
 console.log('user_overview:', user.user_overview);
 ```
-
-### Task output wrong format
-
-**Check:**
-1. Final `return` step returns JSON?
-2. Field names match expected schema?
-3. Data types correct?
 
 ---
 
 ## Related Documentation
 
-- [ARCHITECTURE.md](../docs/ARCHITECTURE.md) - Complete system design
-- [FAQ.md](../docs/FAQ.md) - Common questions
-- [WALKTHROUGH.md](../docs/WALKTHROUGH.md) - Step-by-step guide
-- [PRACTICAL_IMPLEMENTATION.md](../docs/PRACTICAL_IMPLEMENTATION.md) - Code examples
+- [`AGENTS.md`](../AGENTS.md) — Complete system overview + architecture
+- [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — Technical design
+- [`IMPLEMENTATION_SUMMARY.md`](../IMPLEMENTATION_SUMMARY.md) — Current status
+- [`docs/PERSONA.md`](../docs/PERSONA.md) — Samay voice agent specification
 
 ---
 
@@ -580,10 +637,10 @@ console.log('user_overview:', user.user_overview);
 
 **Key Principles:**
 1. Julep agents = Background only, never user-facing
-2. Tasks return JSON that syncs to MongoDB
-3. MongoDB `user_overview` stores all enriched data
+2. Tasks return JSON that syncs to MongoDB `user_overview`
+3. MongoDB is single source of truth
 4. ElevenLabs agents read from MongoDB for context
-5. Simple, elegant, MongoDB-first architecture
+5. YAML syntax matters: prepare context first, describe JSON structure
 
 **Data Flow:**
 ```
@@ -595,6 +652,14 @@ Task returns JSON → Synced to MongoDB
   ↓
 Next conversation → ElevenLabs gets updated context
 ```
+
+**Current Status:**
+- ✅ Transcript processing (working)
+- ✅ Birth chart calculation (working)
+- 🚧 Gamification tracking (planned)
+- 🚧 Weekly reports (planned)
+- 🚧 Horoscope generation (planned)
+- 🚧 Persona enrichment (planned)
 
 ---
 
