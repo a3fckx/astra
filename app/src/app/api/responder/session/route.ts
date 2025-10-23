@@ -57,7 +57,7 @@ export async function GET(request: Request) {
 	const julepUserId = user.julep_user_id ?? null;
 
 	let julepSessionId: string | null = null;
-	if (julepEnv.astraAgentId && julepUserId) {
+	if (julepEnv.backgroundWorkerAgentId && julepUserId) {
 		try {
 			julepSessionId = await getOrCreateJulepSession(julepUserId);
 		} catch (error) {
@@ -69,9 +69,11 @@ export async function GET(request: Request) {
 		}
 	} else {
 		routeLogger.warn(
-			"ASTRA_AGENT_ID not configured; skipping Julep session init",
+			"BACKGROUND_WORKER_AGENT_ID not configured or user not synced to Julep; skipping session init",
 			{
 				userId: user.id,
+				hasAgentId: !!julepEnv.backgroundWorkerAgentId,
+				hasJulepUserId: !!julepUserId,
 			},
 		);
 	}

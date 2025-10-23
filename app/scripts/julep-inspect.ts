@@ -28,8 +28,7 @@ async function main() {
 		});
 	}
 
-	const agentId =
-		process.env.BACKGROUND_WORKER_AGENT_ID ?? process.env.BACKGROUND_AGENT_ID ?? undefined;
+	const agentId = process.env.BACKGROUND_WORKER_AGENT_ID;
 	if (agentId) {
 		scriptLogger.info(`Listing tasks for agent ${agentId}`);
 		const tasks: Array<{ id: string; name?: string | null; description?: string | null }> = [];

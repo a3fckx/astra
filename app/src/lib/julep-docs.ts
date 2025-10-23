@@ -129,7 +129,7 @@ export async function writeConversationSummary(
 				type: "notes",
 				scope: "frontline",
 				shared: true,
-				updated_by: julepEnv.astraAgentId ?? "astra",
+				updated_by: julepEnv.backgroundWorkerAgentId ?? "astra",
 				timestamp_iso: timestamp,
 				source: sessionId,
 			} as JulepDocMetadata,
@@ -167,26 +167,29 @@ export async function createOrGetSession(julepUserId: string, agentId: string) {
 export async function getOrCreateJulepSession(
 	julepUserId: string,
 ): Promise<string> {
-	if (!julepEnv.astraAgentId) {
-		throw new Error("ASTRA_AGENT_ID not configured");
+	if (!julepEnv.backgroundWorkerAgentId) {
+		throw new Error("BACKGROUND_WORKER_AGENT_ID not configured");
 	}
 
 	const sessionsCollection = getSessions();
 	const existingSession = await sessionsCollection.findOne({
 		user_id: julepUserId,
-		agent_id: julepEnv.astraAgentId,
+		agent_id: julepEnv.backgroundWorkerAgentId,
 	});
 
 	if (existingSession) {
 		return existingSession.julep_session_id;
 	}
 
-	const session = await createOrGetSession(julepUserId, julepEnv.astraAgentId);
+	const session = await createOrGetSession(
+		julepUserId,
+		julepEnv.backgroundWorkerAgentId,
+	);
 
 	await sessionsCollection.insertOne({
 		user_id: julepUserId,
 		julep_session_id: session.id,
-		agent_id: julepEnv.astraAgentId,
+		agent_id: julepEnv.backgroundWorkerAgentId,
 		createdAt: new Date(),
 		updatedAt: new Date(),
 	});

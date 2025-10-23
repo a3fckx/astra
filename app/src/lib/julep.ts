@@ -10,8 +10,7 @@ const required = (name: string, value: string | undefined): string => {
 export const julepEnv = {
 	apiKey: required("JULEP_API_KEY", process.env.JULEP_API_KEY),
 	project: process.env.JULEP_PROJECT ?? "astra",
-	astraAgentId: process.env.ASTRA_AGENT_ID,
-	backgroundAgentId: process.env.BACKGROUND_AGENT_ID,
+	backgroundWorkerAgentId: process.env.BACKGROUND_WORKER_AGENT_ID,
 };
 
 export const julepClient = new Julep({

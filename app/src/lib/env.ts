@@ -73,7 +73,6 @@ export const env = {
 	elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? undefined,
 	elevenLabsAgentId: process.env.ELEVENLABS_AGENT_ID ?? undefined,
 	julepApiKey: process.env.JULEP_API_KEY ?? undefined,
-	astraAgentId: process.env.ASTRA_AGENT_ID ?? undefined,
 	backgroundWorkerAgentId: process.env.BACKGROUND_WORKER_AGENT_ID ?? undefined,
 	googlePromptRaw: process.env.GOOGLE_OAUTH_PROMPT ?? undefined,
 };

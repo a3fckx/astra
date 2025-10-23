@@ -464,14 +464,14 @@ export const julepClient = new JulepClient();
 /**
  * Get the background worker agent ID from environment
  *
- * Falls back to ASTRA_AGENT_ID if BACKGROUND_WORKER_AGENT_ID is not set
+ * Supports legacy env var names for backwards compatibility
  */
 export function getBackgroundWorkerAgentId(): string {
-	const agentId = env.backgroundWorkerAgentId || env.astraAgentId;
+	const agentId = env.backgroundWorkerAgentId;
 
 	if (!agentId) {
 		julepLogger.error(
-			"No background worker agent ID configured. Set BACKGROUND_WORKER_AGENT_ID or ASTRA_AGENT_ID environment variable.",
+			"No background worker agent ID configured. Set BACKGROUND_WORKER_AGENT_ID environment variable.",
 		);
 		throw new Error("Background worker agent ID not configured");
 	}
