@@ -94,9 +94,15 @@ export async function processTranscriptConversation({
 		});
 	}
 
-	const transcriptText = await elevenLabsClient.getTranscriptText(
+	const transcriptResult = await elevenLabsClient.getTranscriptTextWithRetry(
 		conversation.conversation_id,
+		{
+			maxAttempts: 6,
+			delayMs: 2000,
+		},
 	);
+
+	const transcriptText = transcriptResult.text;
 
 	if (transcriptText === null || transcriptText === undefined) {
 		throw new Error("Failed to fetch transcript from ElevenLabs");
@@ -155,6 +161,10 @@ export async function processTranscriptConversation({
 						...conversation.metadata,
 						transcript_processed: false,
 						transcript_empty: true,
+						transcript_poll_attempts: transcriptResult.attempts,
+						transcript_poll_delay_ms: transcriptResult.delayMs,
+						transcript_message_count: transcriptResult.messageCount,
+						transcript_status: transcriptResult.conversation?.status,
 					},
 				},
 			},
@@ -197,7 +207,7 @@ export async function processTranscriptConversation({
 			memory_store_token: memoryStoreToken ?? undefined,
 		},
 		{
-			maxAttempts: 60,
+			maxAttempts: 120,
 			intervalMs: 2000,
 			onProgress: (status, attempt) => {
 				transcriptLogger.debug("Task execution progress", {
@@ -493,6 +503,10 @@ export async function processTranscriptConversation({
 				metadata: {
 					...conversation.metadata,
 					transcript_processed: true,
+					transcript_poll_attempts: transcriptResult.attempts,
+					transcript_poll_delay_ms: transcriptResult.delayMs,
+					transcript_message_count: transcriptResult.messageCount,
+					transcript_status: transcriptResult.conversation?.status,
 					task_id: result.task_id,
 					execution_id: result.id,
 					conversation_summary: conversationEntry

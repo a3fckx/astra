@@ -12,6 +12,7 @@ const scriptLogger = logger.child("scripts:run-transcript-task");
 type CliArgs = {
 	conversationIds: string[];
 	limit: number;
+	pendingOnly: boolean;
 };
 
 const DEFAULT_LIMIT = 3;
@@ -20,6 +21,7 @@ function parseArgs(): CliArgs {
 	const args = process.argv.slice(2);
 	const conversationIds: string[] = [];
 	let limit = DEFAULT_LIMIT;
+	let pendingOnly = false;
 
 	for (let index = 0; index < args.length; index += 1) {
 		const current = args[index];
@@ -40,15 +42,22 @@ function parseArgs(): CliArgs {
 				limit = value;
 			}
 			index += 1;
+			continue;
+		}
+
+		if (current === "--pending" || current === "--pending-only") {
+			pendingOnly = true;
+			continue;
 		}
 	}
 
-	return { conversationIds, limit };
+	return { conversationIds, limit, pendingOnly };
 }
 
 async function loadConversations(
 	conversationIds: string[],
 	limit: number,
+	pendingOnly: boolean,
 ): Promise<ElevenLabsConversation[]> {
 	const conversations = getElevenLabsConversations();
 
@@ -58,21 +67,33 @@ async function loadConversations(
 			.toArray();
 	}
 
+	const query: Record<string, unknown> = {};
+
+	if (pendingOnly) {
+		query["metadata.transcript_processed"] = { $ne: true };
+	}
+
 	return conversations
 		.find({})
+		.filter(query)
 		.sort({ updated_at: -1 })
 		.limit(limit)
 		.toArray();
 }
 
 async function main() {
-	const { conversationIds, limit } = parseArgs();
+	const { conversationIds, limit, pendingOnly } = parseArgs();
 
-	const conversations = await loadConversations(conversationIds, limit);
+	const conversations = await loadConversations(
+		conversationIds,
+		limit,
+		pendingOnly,
+	);
 	if (conversations.length === 0) {
 		scriptLogger.warn("No conversations found to process", {
 			conversationIds,
 			limit,
+			pendingOnly,
 		});
 		return;
 	}
@@ -105,9 +126,12 @@ async function main() {
 		}
 
 		try {
+			const previousFirstMessage = user.user_overview?.first_message ?? null;
+
 			scriptLogger.info("Processing conversation", {
 				conversationId: conversation.conversation_id,
 				userId: user.id,
+				pendingOnly,
 			});
 
 			const result = await processTranscriptConversation({
@@ -115,12 +139,23 @@ async function main() {
 				conversation,
 			});
 
+			const updatedUser = await usersCollection.findOne({ id: user.id });
+			const updatedFirstMessage =
+				updatedUser?.user_overview?.first_message ?? null;
+
 			scriptLogger.info("Transcript processed", {
 				conversationId: result.conversation_id,
 				taskId: result.task_id,
 				executionId: result.execution_id,
 				memoriesCount: result.memories_count,
 				hasSummary: !!result.conversation_summary,
+				firstMessageUpdated:
+					previousFirstMessage !== updatedFirstMessage
+						? {
+								previous: previousFirstMessage,
+								next: updatedFirstMessage,
+							}
+						: null,
 			});
 		} catch (error) {
 			scriptLogger.error(

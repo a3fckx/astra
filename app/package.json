@@ -12,6 +12,7 @@
     "sync:users": "bun run scripts/sync-existing-users.ts",
     "sync:users:dry-run": "bun run scripts/sync-existing-users.ts --dry-run",
     "inspect:julep": "bun run scripts/julep-inspect.ts",
+    "inspect:conversation": "bun --env-file=.env run scripts/inspect-conversation.ts",
     "inspect:context": "bun run scripts/test-context-enrichment.ts",
     "set:memory-token": "bun run scripts/set-memory-token.ts",
     "test": "bun --env-file=.env test",
