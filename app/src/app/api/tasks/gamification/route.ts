@@ -28,15 +28,20 @@ const gamificationLogger = logger.child("api:tasks:gamification");
  */
 export async function POST(request: Request) {
 	try {
-		// Check authentication
+		// ANCHOR:flexible-auth-for-internal-calls
+		// Allow internal service calls with user_id in body (from transcript processor)
+		// OR authenticated user requests without user_id
 		const session = await auth.api.getSession({ headers: request.headers });
+		const body = await request.json();
+		const userId = body.user_id || session?.user?.id;
 
-		if (!session?.user) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		if (!userId) {
+			return NextResponse.json(
+				{ error: "Missing user_id or authentication" },
+				{ status: 401 },
+			);
 		}
 
-		const body = await request.json();
-		const userId = body.user_id || session.user.id;
 		const conversationId = body.conversation_id || null;
 		const eventType = body.event_type || "conversation_completed";
 
