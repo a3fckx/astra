@@ -185,14 +185,14 @@ export async function POST(request: Request) {
 			);
 		}
 
-	// Build birth_chart object for user_overview (contains both Vedic and Western)
-	const birthChart = {
-		system: "both" as const, // Always generate both systems
-		vedic: birthChartData.vedic || null,
-		western: birthChartData.western || null,
-		famous_people: birthChartData.famous_people || [],
-		calculated_at: new Date(),
-	};
+		// Build birth_chart object for user_overview (contains both Vedic and Western)
+		const birthChart = {
+			system: "both" as const, // Always generate both systems
+			vedic: birthChartData.vedic || null,
+			western: birthChartData.western || null,
+			famous_people: birthChartData.famous_people || [],
+			calculated_at: new Date(),
+		};
 
 		// Update MongoDB user_overview.birth_chart
 		await users.updateOne(
