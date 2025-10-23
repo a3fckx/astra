@@ -15,16 +15,11 @@ export async function getResponderPromptTemplate(): Promise<string> {
 	for (const root of candidateRoots) {
 		const filePath = join(root, "docs", "responder.md");
 		try {
+			// Read the entire file as the system prompt
+			// The file now contains just the prompt content without fence blocks
 			const source = await readFile(filePath, "utf-8");
-			const match = source.match(/```md([\s\S]*?)```/);
 
-			if (!match) {
-				throw new Error(
-					`Responder prompt template missing fenced block in ${filePath}.`,
-				);
-			}
-
-			cachedResponderPrompt = match[1].trim();
+			cachedResponderPrompt = source.trim();
 			return cachedResponderPrompt;
 		} catch (error) {
 			const err = error instanceof Error ? error : new Error(String(error));
