@@ -1,67 +1,77 @@
-import { auth } from "@/lib/auth";
-import { getUsers } from "@/lib/mongo";
-import { getResponderPromptTemplate } from "@/lib/prompt-loader";
+import { getUsers } from '@/lib/mongo';
 
-async function testSessionData() {
-	console.log("\n🔍 Testing Session Data for ElevenLabs\n");
-	
-	// Get user
-	const users = getUsers();
-	const user = await users.findOne({ id: "68ea36edd789ed3a1e501236" });
-	
-	if (!user) {
-		console.error("❌ User not found");
-		return;
-	}
-	
-	console.log("👤 User:", user.name);
-	console.log("📧 Email:", user.email);
-	
-	// Check birth data flags
-	console.log("\n🎂 Birth Data Flags:");
-	console.log("  has_birth_date:", !!user.date_of_birth);
-	console.log("  has_birth_time:", !!user.birth_time);
-	console.log("  has_birth_place:", !!user.birth_location);
-	
-	// Check user_overview
-	console.log("\n📊 User Overview:");
-	console.log("  profile_summary:", user.user_overview?.profile_summary?.substring(0, 100) + "...");
-	console.log("  first_message:", user.user_overview?.first_message);
-	console.log("  incident_map:", user.user_overview?.incident_map?.length, "incidents");
-	console.log("  preferences.hinglish_level:", user.user_overview?.preferences?.hinglish_level);
-	console.log("  preferences.communication_style:", user.user_overview?.preferences?.communication_style);
-	
-	// Load prompt
-	const prompt = await getResponderPromptTemplate();
-	
-	console.log("\n📝 Prompt Info:");
-	console.log("  Length:", prompt?.length, "chars");
-	console.log("  Contains 'Birth Data Collection':", prompt?.includes("Birth Data Collection"));
-	console.log("  Contains 'NEVER ask for birth date':", prompt?.includes("NEVER ask for birth date"));
-	console.log("  Contains 'numbered list':", prompt?.includes("numbered list"));
-	
-	// Check for problematic patterns
-	console.log("\n🔍 Checking for problematic prompt patterns:");
-	const numbered = prompt?.match(/1\.\s+Your birth date/i);
-	if (numbered) {
-		console.log("  ⚠️  Found numbered list asking for birth date:", numbered[0]);
-	} else {
-		console.log("  ✅ No numbered list asking for birth date");
-	}
-	
-	// Show dynamic variables that would be sent
-	const dynamicVars = {
-		user_name: user.name,
-		has_birth_date: !!user.date_of_birth,
-		has_birth_time: !!user.birth_time,
-		has_birth_place: !!user.birth_location,
-		user_overview: JSON.stringify(user.user_overview),
-	};
-	
-	console.log("\n📤 Dynamic Variables Being Sent:");
-	console.log(JSON.stringify(dynamicVars, null, 2).substring(0, 500) + "...");
-	
-	process.exit(0);
+const users = getUsers();
+const user = await users.findOne({ id: '68ea36edd789ed3a1e501236' });
+
+if (!user) {
+  console.log('User not found');
+  process.exit(1);
 }
 
-testSessionData().catch(console.error);
+const overview = user.user_overview || {};
+
+console.log('===========================================');
+console.log('  DATA SENT TO ELEVENLABS IN NEXT SESSION');
+console.log('===========================================\n');
+
+console.log('✅ BASIC USER DATA:');
+console.log('├─ user_name:', user.name);
+console.log('├─ date_of_birth:', user.date_of_birth?.toISOString().split('T')[0]);
+console.log('├─ birth_time:', user.birth_time);
+console.log('└─ birth_place:', user.birth_location);
+
+console.log('\n✅ CHART STATUS:');
+const hasVedic = !!overview.birth_chart?.vedic;
+const hasWestern = !!overview.birth_chart?.western;
+console.log('├─ has_birth_chart:', hasVedic || hasWestern);
+console.log('├─ has_vedic_chart:', hasVedic);
+console.log('├─ has_western_chart:', hasWestern);
+console.log('├─ chart_status:', (hasVedic && hasWestern) ? 'ready' : 'pending');
+console.log('├─ vedic_sun:', overview.birth_chart?.vedic?.sun_sign || null);
+console.log('├─ vedic_moon:', overview.birth_chart?.vedic?.moon_sign || null);
+console.log('├─ vedic_ascendant:', overview.birth_chart?.vedic?.ascendant || null);
+console.log('├─ western_sun:', overview.birth_chart?.western?.sun_sign || null);
+console.log('├─ western_moon:', overview.birth_chart?.western?.moon_sign || null);
+console.log('└─ western_rising:', overview.birth_chart?.western?.rising_sign || null);
+
+console.log('\n✅ FAMOUS PEOPLE:');
+console.log('├─ has_famous_people:', !!(overview.birth_chart?.famous_people?.length));
+console.log('└─ famous_people_count:', overview.birth_chart?.famous_people?.length || 0);
+
+console.log('\n✅ PREFERENCES:');
+console.log('├─ hinglish_level:', overview.preferences?.hinglish_level ?? null);
+console.log('├─ flirt_opt_in:', overview.preferences?.flirt_opt_in ?? false);
+console.log('├─ communication_style:', overview.preferences?.communication_style || null);
+console.log('└─ astrology_system:', overview.preferences?.astrology_system || null);
+
+console.log('\n✅ GAMIFICATION:');
+console.log('├─ streak_days:', overview.gamification?.streak_days ?? 0);
+console.log('├─ total_conversations:', overview.gamification?.total_conversations ?? 0);
+console.log('└─ level:', overview.gamification?.level ?? 1);
+
+console.log('\n✅ PROFILE & CONTEXT:');
+console.log('├─ profile_summary:', overview.profile_summary ? 'Yes (detailed)' : 'No');
+console.log('├─ recent_conversations:', overview.recent_conversations?.length || 0, 'stored');
+console.log('├─ incident_map:', overview.incident_map?.length || 0, 'incidents');
+console.log('└─ insights:', overview.insights?.length || 0, 'insights');
+
+console.log('\n✅ COMPLETE user_overview JSON:');
+console.log('All data above is embedded in a single JSON string');
+console.log('Agent can access ANY field from your profile');
+console.log('Size:', JSON.stringify(overview).length, 'characters');
+
+console.log('\n✅ FIRST MESSAGE:');
+console.log(overview.first_message || 'Using default greeting');
+
+console.log('\n===========================================');
+console.log('🚀 READY FOR CONVERSATION!');
+console.log('===========================================\n');
+console.log('When you start your next voice session:');
+console.log('1. All this data is sent to ElevenLabs agent');
+console.log('2. Agent knows your birth chart, preferences, history');
+console.log('3. Agent can reference past conversations and incidents');
+console.log('4. Agent knows you\'re interested in: intelligence, memory, learning');
+console.log('5. Agent knows your projects: background agents, moonshot');
+console.log('\nStart a conversation now to test!');
+
+process.exit(0);

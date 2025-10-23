@@ -249,6 +249,7 @@ export async function processTranscriptConversation({
 		conversation_summary?: Record<string, unknown>;
 		memories?: Array<Record<string, unknown>>;
 		birth_details?: {
+			birth_time?: string | null;
 			city?: string | null;
 			country?: string | null;
 			place_text?: string | null;
@@ -408,6 +409,11 @@ export async function processTranscriptConversation({
 	].slice(-10);
 
 	const birthDetails = extracted.birth_details ?? {};
+	const birthTime =
+		typeof birthDetails.birth_time === "string" &&
+		birthDetails.birth_time.trim().length > 0
+			? birthDetails.birth_time.trim()
+			: undefined;
 	const birthCity =
 		typeof birthDetails.city === "string" && birthDetails.city.trim().length > 0
 			? birthDetails.city.trim()
@@ -473,6 +479,9 @@ export async function processTranscriptConversation({
 	const userSetUpdate: Record<string, unknown> = {
 		user_overview: mergedOverview,
 	};
+	if (birthTime) {
+		userSetUpdate.birth_time = birthTime;
+	}
 	if (birthCity) {
 		userSetUpdate.birth_city = birthCity;
 	}
