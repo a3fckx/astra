@@ -1,290 +1,399 @@
-# Implementation Summary - Voice Agent Improvements
-**Date:** October 17, 2025  
-**Session:** Voice conversation flow improvements + incident map integration
+# Astra Implementation Summary
+
+> **Last Updated:** October 24, 2025  
+> **Status:** ✅ Fully Operational (Voice + Background Processing + Birth Charts)
 
 ---
 
-## ✅ All Changes Completed
+## 🎯 What's Working Right Now
 
-### **1. Background Task Triggering** ⭐ CRITICAL FIX
-**File:** `app/src/components/voice-session/useVoiceConnection.ts` (lines 92-127)
+### 1. Voice Session with Full Context ✅
 
-**Problem:** Conversation ended but no background processing triggered  
-**Solution:** Added transcript API call in `onDisconnect` handler
+**User Flow:**
+1. User visits `http://localhost:3000`
+2. Clicks "Start Voice Session"
+3. ElevenLabs agent greets with personalized message
+4. Agent has COMPLETE memory of user from first word
 
+**Data Sent to Agent:**
+- Complete birth chart (Vedic + Western + 7 famous people)
+- Profile summary (personality, testing goals, preferences)
+- Recent 10 conversations with full context
+- Incident map (10 creative sparks tracked)
+- 85+ AI-generated insights
+- User interests: intelligence, memory, learning
+- User projects: background agents, moonshot project
+- Preferences: English-only (Hinglish: 0), no flirt
+
+**Technical Implementation:**
+- **Session Handshake:** `/api/responder/session` fetches `user_overview` from MongoDB (74KB JSON)
+- **Dynamic Variables:** 40+ fields built from user data
+- **ElevenLabs SDK:** Receives all context via `dynamicVariables` prop
+- **Agent Prompt:** Loaded from `app/docs/responder.md`
+
+### 2. Transcript Processing ✅
+
+**Automatic Trigger:**
+- Fires after every conversation ends (onDisconnect handler)
+- Fetches transcript from ElevenLabs API with retry logic
+- Executes Julep background task (gemini-2.5-flash)
+- Syncs results to MongoDB `user_overview`
+
+**What It Extracts:**
+- Conversation summary and topics
+- User preferences (communication style, topics of interest, Hinglish level)
+- Profile updates and insights
+- **Birth time/location** if mentioned (HH:MM 24-hour format)
+- Incident map entries (creative sparks, key moments)
+- Personalized first message for next session
+
+**Technical Files:**
+- **Task:** `agents/tasks/transcript-processor.yaml`
+- **Orchestrator:** `app/src/lib/transcript-processor.ts`
+- **API:** `app/src/app/api/tasks/transcript/route.ts`
+- **Trigger:** `app/src/components/voice-session/useVoiceConnection.ts:115-160`
+
+### 3. Birth Chart Calculation ✅
+
+**Automatic Trigger:**
+- Fires when all birth data present (date, time, location)
+- AND chart doesn't already exist
+- Triggered as fire-and-forget after transcript processing completes
+
+**What It Generates:**
+- **Vedic Chart (Sidereal):**
+  - Sun, Moon, Ascendant signs
+  - 9 planets with houses (1-12), degrees, nakshatras
+  - Current Dasha period (Mahadasha/Antardasha)
+  - Chart summary (personality insights)
+
+- **Western Chart (Tropical):**
+  - Sun, Moon, Rising signs
+  - 10 planets with houses, degrees
+  - Major aspects (conjunction, trine, square, opposition, sextile)
+  - Chart summary (personality based on tropical zodiac)
+
+- **Famous People (Culturally Aware):**
+  - 5-7 people born on same date (month/day, ignore year)
+  - Prioritizes user's region (e.g., Indian users get 2-3 Indian figures)
+  - Diverse categories (tech, arts, sports, music, science)
+  - Includes name, category, achievements, birth year, origin
+
+**Chart Calculated Once:**
+- Stored permanently in MongoDB
+- Never recalculated (unless manually deleted)
+- Used for all future conversations
+
+**Technical Files:**
+- **Task:** `agents/tasks/chart-calculator.yaml`
+- **Trigger:** `app/src/lib/transcript-processor.ts:544-608`
+- **API:** `app/src/app/api/tasks/chart/route.ts`
+
+### 4. User Profile & Memory ✅
+
+**MongoDB Structure:**
 ```typescript
-onDisconnect: async (details) => {
-  const conversationId = details?.conversationId;
-  
-  if (conversationId) {
-    console.info("[ElevenLabs] Triggering background transcript processing", conversationId);
-    fetch("/api/tasks/transcript", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: conversationId }),
-    }).catch((error) => {
-      console.error("[ElevenLabs] Failed to trigger transcript processing", error);
-    });
-  }
-  
-  sessionActiveRef.current = false;
-  setStatus("disconnected");
+user_overview: {
+  profile_summary: string;           // AI-generated personality summary
+  first_message: string;             // Personalized greeting for next session
+  preferences: {
+    communication_style: string;     // casual | balanced | formal
+    topics_of_interest: string[];    // User's interests
+    hinglish_level: number;          // 0-100 (0 = English-only)
+    flirt_opt_in: boolean;           // Consent for affectionate tone
+    astrology_system: string;        // vedic | western | both
+  };
+  birth_chart: {
+    system: "both";                  // Always both Vedic + Western
+    vedic: {
+      sun_sign, moon_sign, ascendant,
+      planets: [...],                // With nakshatras
+      dasha: {...},                  // Current period
+      chart_summary: string
+    };
+    western: {
+      sun_sign, moon_sign, rising_sign,
+      planets: [...],
+      aspects: [...],                // Major aspects
+      chart_summary: string
+    };
+    famous_people: [                 // Culturally aware
+      { name, category, known_for, birth_year, origin }
+    ];
+    calculated_at: Date;
+  };
+  birth_details: {                   // Extracted from conversations
+    city, country, place_text, timezone
+  };
+  recent_conversations: [...];       // Last 10 with summaries
+  incident_map: [...];               // Key moments, creative sparks
+  insights: [...];                   // AI-generated insights (85+)
+  gamification: {
+    streak_days, total_conversations, level
+  };
+  last_updated: Date;
+  updated_by: string;                // Task execution ID
 }
 ```
 
-**Impact:** 
-- ✅ Transcript processing now triggers automatically
-- ✅ Incident map extraction happens in background
-- ✅ user_overview syncs to MongoDB after each conversation
-
 ---
 
-### **2. Auto-Disconnect on Farewell** ⭐ NEW FEATURE
-**File:** `app/src/components/voice-session/useVoiceConnection.ts` (lines 64-83)
+## 🏗️ Architecture
 
-**Problem:** Agent couldn't end call when user requested  
-**Solution:** Pattern detection for farewell phrases with 2.5s auto-disconnect
+### Data Flow
 
-```typescript
-if (source === "ai") {
-  console.info("[ElevenLabs] Agent response:", trimmed);
-  
-  const farewellPatterns = [
-    /farewell for now/i,
-    /may your (path|journey).{0,50}be/i,
-    /until (we speak|next time|our paths cross)/i,
-    /namaste.{0,20}(take care|goodbye|until)/i,
-  ];
-  
-  if (farewellPatterns.some((pattern) => pattern.test(trimmed))) {
-    console.info("[ElevenLabs] Agent farewell detected, auto-disconnecting in 2.5s");
-    setTimeout(() => {
-      void endSessionRef.current();
-    }, 2500);
-  }
-}
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    USER CONVERSATION                         │
+│                                                              │
+│  1. User visits page                                         │
+│  2. Session handshake (/api/responder/session)             │
+│     ├─ Fetches user_overview from MongoDB (74KB)           │
+│     ├─ Loads prompt from app/docs/responder.md             │
+│     └─ Returns context + dynamic variables                  │
+│  3. ElevenLabs connection starts                            │
+│     ├─ Receives 40+ dynamic variables                       │
+│     ├─ Agent prompt overridden with latest                  │
+│     └─ Agent has full memory from word 1                    │
+│  4. Voice conversation                                       │
+│  5. User ends conversation                                   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 BACKGROUND PROCESSING                        │
+│                                                              │
+│  1. Trigger: POST /api/tasks/transcript (fire-and-forget)  │
+│  2. Fetch transcript from ElevenLabs API (with retry)       │
+│  3. Execute Julep task (transcript-processor)               │
+│     ├─ Load YAML definition from disk                       │
+│     ├─ Create task instance via SDK                         │
+│     ├─ Execute with polling (2s interval, max 120 attempts) │
+│     └─ Returns JSON with insights, preferences, etc.        │
+│  4. Sync results to MongoDB user_overview                   │
+│  5. Auto-trigger chart calc if:                             │
+│     ├─ Birth date + time + location all present            │
+│     └─ AND chart doesn't already exist                      │
+│  6. Chart calculation (if triggered):                       │
+│     ├─ Generate Vedic chart (sidereal)                      │
+│     ├─ Generate Western chart (tropical)                    │
+│     ├─ Find famous people (culturally aware)                │
+│     └─ Sync to MongoDB (calculated once, stored forever)    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    NEXT CONVERSATION                         │
+│                                                              │
+│  Session handshake returns UPDATED user_overview            │
+│  Agent knows everything from previous conversation          │
+│  Personalized first_message references recent insights      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Impact:**
-- ✅ Agent can gracefully end conversations
-- ✅ User says "close it" → Agent responds with farewell → Auto-disconnect
-- ✅ 2.5 second delay for graceful ending
+### Technology Stack
+
+- **Frontend:** Next.js 15 (App Router), React 18, TypeScript
+- **Voice:** ElevenLabs React SDK (`@elevenlabs/react`)
+- **Auth:** Better Auth + Google OAuth (MongoDB adapter)
+- **Database:** MongoDB Atlas (`user_overview` as source of truth)
+- **Background Tasks:** Julep SDK (Gemini 2.5 Flash model)
+- **Linting:** Biome (type-checking + formatting)
 
 ---
 
-### **3. Simplified Dynamic Variables** 🔧 OPTIMIZATION
-**File:** `app/src/components/voice-session/utils.ts` (lines 178-212)
+## 📁 Key Files Reference
 
-**Problem:** 25+ redundant variables, LLM could extract from context  
-**Solution:** Pass `user_overview` JSON + boolean flags
+### Voice Session
+- `app/src/components/voice-session/index.tsx` — Main orchestrator
+- `app/src/components/voice-session/useSessionHandshake.ts` — Fetches user context
+- `app/src/components/voice-session/useVoiceConnection.ts` — Manages ElevenLabs connection
+- `app/src/components/voice-session/utils.ts` — Builds 40+ dynamic variables
 
-**Before (7 variables):**
-```typescript
-{
-  user_name,
-  workflow_id,
-  julep_session_id,
-  elevenlabs_user_token,
-  date_of_birth,
-  birth_time,
-  birth_place,
-}
-```
+### API Routes
+- `app/src/app/api/responder/session/route.ts` — Session handshake (returns user_overview)
+- `app/src/app/api/tasks/transcript/route.ts` — Trigger transcript processing
+- `app/src/app/api/tasks/chart/route.ts` — Trigger chart calculation (optional endpoint)
+- `app/src/app/api/elevenlabs/signed-url/route.ts` — ElevenLabs signed URL
 
-**After (13 variables):**
-```typescript
-{
-  // Core identity
-  user_name,
-  workflow_id,
-  julep_session_id,
-  
-  // Complete context (JSON)
-  user_overview: JSON.stringify(overview),
-  
-  // Quick access
-  streak_days,
-  profile_summary,
-  vedic_sun,
-  vedic_moon,
-  western_sun,
-  
-  // Boolean flags for conditional prompting
-  has_birth_date: !!dateOfBirth,
-  has_birth_time: !!birthTime,
-  has_birth_place: !!birthPlace,
-}
-```
+### Background Processing
+- `app/src/lib/transcript-processor.ts` — Main orchestration for all background tasks
+- `app/src/lib/julep-client.ts` — Julep SDK wrapper (createAndExecuteTask, polling)
+- `app/src/lib/tasks/loader.ts` — YAML task definition loader with caching
+- `app/src/lib/elevenlabs-api.ts` — ElevenLabs API client (fetch transcripts)
 
-**Impact:**
-- ✅ LLM extracts detailed data from user_overview JSON
-- ✅ Boolean flags enable "IF birth data exists, don't ask" logic
-- ✅ Reduced redundancy, cleaner architecture
+### Julep Tasks (YAML)
+- `agents/tasks/transcript-processor.yaml` — Extract insights, preferences, birth data
+- `agents/tasks/chart-calculator.yaml` — Generate Vedic/Western charts + famous people
+
+### Configuration
+- `app/src/lib/mongo.ts` — MongoDB schema & TypeScript types
+- `app/src/lib/env.ts` — Environment variable validation
+- `app/docs/responder.md` — ElevenLabs agent prompt (Samay persona)
+- `agents/definitions/astra.yaml` — Background Worker Agent definition (reference only)
 
 ---
 
-### **4. Complete Prompt Rewrite** 📝 MAJOR IMPROVEMENT
-**File:** `app/docs/responder.md` (completely rewritten)
+## 🧪 Testing & Debugging
 
-#### **New Sections Added:**
-
-**A. Birth Data Collection (CRITICAL)**
-- ✅ Check `{{has_birth_date}}`, `{{has_birth_time}}`, `{{has_birth_place}}` first
-- ✅ IF exists → Reference naturally, don't ask again
-- ✅ IF missing → Extract conversationally (no numbered lists)
-- ✅ Examples of good vs. bad flows
-
-**B. Mysterious Tone Guidance**
-- ✅ "I sense..." instead of "You are..."
-- ✅ Reference incident_map subtly: "Remember that creative spark?"
-- ✅ Create intrigue: "Something shifted for you recently, didn't it?"
-- ✅ Leave room for revelation
-
-**C. Incident Map Usage**
-- ✅ Extract from user_overview JSON
-- ✅ Paraphrase mysteriously, don't quote verbatim
-- ✅ Build continuity across conversations
-- ✅ Example callbacks provided
-
-**D. Ending Conversations Protocol**
-- ✅ 4 exact farewell phrases for auto-disconnect
-- ✅ Don't ask "Are you sure?"
-- ✅ One sentence encouragement + farewell phrase
-- ✅ Examples provided
-
-**E. Dynamic Variables Simplified**
-- ✅ Table reduced from 16 to 10 core variables
-- ✅ user_overview JSON contains all detailed data
-- ✅ Boolean flags documented
-
-#### **Sections Removed:**
-- ❌ First-Time Greeting (already handled by `generateFirstMessage()`)
-
----
-
-## 🎯 Issues Resolved
-
-| Issue | Status | Solution |
-|-------|--------|----------|
-| Background tasks not triggering | ✅ FIXED | onDisconnect calls transcript API |
-| Agent asks for existing birth data | ✅ FIXED | Prompt checks boolean flags first |
-| Technical/numbered question format | ✅ FIXED | Conversational extraction guidance |
-| Agent can't end call | ✅ FIXED | Farewell pattern detection |
-| Redundant dynamic variables | ✅ FIXED | Pass user_overview JSON |
-
----
-
-## 🧪 Testing Instructions
-
-### **1. Start Dev Server**
+### Test Your Profile
 ```bash
 cd app
-bun run dev
+bun run scripts/inspect-my-profile.ts
+# Shows: profile summary, preferences, conversations, incidents, insights
 ```
 
-### **2. Test Background Processing**
-1. Start a conversation
-2. Have a brief chat
-3. Say "close the conversation"
-4. Check terminal logs for:
-   ```
-   [ElevenLabs] Conversation disconnected
-   [ElevenLabs] Triggering background transcript processing conv_xxxxx
-   ```
-5. Wait 1-2 minutes
-6. Check MongoDB `user_overview.incident_map` for new entries
-
-### **3. Test Birth Data Handling**
-**Scenario A: New user (no birth data)**
-- Agent should ask conversationally: "I sense I need your birth date—when were you born?"
-- Should NOT use numbered lists
-
-**Scenario B: Existing user (has birth data)**
-- Agent should NOT ask for birth date/time/location again
-- Should reference naturally: "I see you're born August 14, 2002..."
-
-### **4. Test Auto-Disconnect**
-1. Start conversation
-2. Say "goodbye" or "close it"
-3. Agent should respond with farewell phrase
-4. Connection should auto-disconnect after 2.5 seconds
-5. Check console: `[ElevenLabs] Agent farewell detected, auto-disconnecting in 2.5s`
-
-### **5. Test Incident Map Callbacks**
-1. Have a conversation mentioning a specific topic (e.g., "I'm working on a project")
-2. End conversation
-3. Wait for background processing (1-2 minutes)
-4. Start new conversation
-5. Agent's first message should mysteriously reference the topic:
-   - ✅ "I've been mulling over that whisper about your project..."
-   - ❌ "Last time you said you're working on a project" (too direct)
-
-### **6. Verify Dynamic Variables**
-1. Start conversation
-2. Open browser console
-3. Check what variables are sent to ElevenLabs
-4. Should see:
-   ```javascript
-   {
-     user_name: "Shubham",
-     user_overview: "{...}", // JSON string
-     streak_days: 1,
-     has_birth_date: true,
-     has_birth_time: true,
-     has_birth_place: true,
-     // ... etc
-   }
-   ```
-
----
-
-## 📦 Files Modified
-
-| File | Lines Changed | Status |
-|------|--------------|--------|
-| `app/src/components/voice-session/useVoiceConnection.ts` | 92-127, 49-87, 195 | ✅ |
-| `app/src/components/voice-session/utils.ts` | 178-212 | ✅ |
-| `app/docs/responder.md` | Complete rewrite | ✅ |
-| `CHANGES_TRACKER.md` | New file | ✅ |
-| `IMPLEMENTATION_SUMMARY.md` | New file | ✅ |
-
----
-
-## 🚀 Next Steps
-
-### **Immediate:**
-1. **Copy prompt to ElevenLabs dashboard** (from `app/docs/responder.md`)
-2. **Test conversation flow** (follow testing instructions above)
-3. **Verify MongoDB updates** after background processing
-
-### **Optional Improvements:**
-- Add more farewell patterns if needed
-- Tune incident map paraphrasing in prompt
-- Add more example conversations for birth data extraction
-- Consider adding typing indicators during background processing
-
----
-
-## 📌 Key Architectural Notes
-
-- **MongoDB = Source of Truth:** All data stored in user_overview field
-- **Incident Map:** Already implemented in transcript-processor.yaml (lines 95-128)
-- **First Message:** Already uses incident_map in generateFirstMessage() (lines 91-170 in utils.ts)
-- **Background Processing:** Julep tasks run async, sync to MongoDB when complete
-- **ElevenLabs Agent:** Receives full context via user_overview JSON
-
----
-
-## ✅ Lint Status
-
+### View Birth Chart
 ```bash
-$ bun run lint
-Checked 38 files in 92ms. No fixes applied.
+bun run scripts/show-my-chart.ts
+# Shows: Vedic chart, Western chart, famous people, planetary positions
 ```
 
-All changes pass Biome lint with no errors.
+### Check Session Data (What Agent Receives)
+```bash
+bun run scripts/test-session-data.ts
+# Shows: All 40+ dynamic variables sent to ElevenLabs
+```
+
+### Process Transcript Manually
+```bash
+bun run scripts/run-transcript-task.ts <conversation_id>
+# Manually trigger transcript processing for specific conversation
+```
+
+### Test Chart Calculation
+```bash
+bun run scripts/test-chart-calc.ts
+# Test chart generation with your current birth data
+```
+
+### Check Birth Data Status
+```bash
+bun run scripts/check-birth-data.ts
+# Shows: date, time, location, timezone, chart status
+```
 
 ---
 
-**Status:** ✅ All changes completed, linted, and ready for testing  
-**Last Updated:** October 17, 2025 - 13:50 UTC
+## 🚀 Quick Start
+
+1. **Environment Setup:**
+   ```bash
+   cd app
+   cp .env.example .env
+   # Fill in: MONGODB_URI, ELEVENLABS_API_KEY, JULEP_API_KEY, 
+   #          GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, etc.
+   ```
+
+2. **Install Dependencies:**
+   ```bash
+   bun install
+   ```
+
+3. **Start Development:**
+   ```bash
+   bun run dev
+   # Visit http://localhost:3000
+   ```
+
+4. **Test Complete Flow:**
+   - Sign in with Google
+   - Click "Start Voice Session"
+   - Agent greets with personalized message
+   - Mention your birth time/place if not set
+   - Have conversation about your interests
+   - Say "goodbye" to end
+   - Check terminal for background processing logs
+   - Wait 1-2 minutes for processing
+   - Start new conversation → Agent remembers everything!
+
+---
+
+## 📊 Example: Current Test User
+
+**Shubham Attri:**
+- **Birth:** August 14, 2002, 07:15 AM, Jhajjar, Haryana, India
+- **Vedic Chart:** Leo Ascendant, Cancer Sun, Libra Moon
+  - Mars-Mercury-Venus in 1st house (charisma, intelligence)
+  - Jupiter-Saturn in 11th house (networking, gains)
+  - Jupiter Mahadasha (expansive period)
+- **Western Chart:** Cancer Rising, Leo Sun, Aries Moon
+- **Interests:** Intelligence, memory, learning, AI agents
+- **Projects:** Background agents, moonshot project
+- **Philosophy:** Technology freeing humans for critical thinking
+- **Preferences:** English-only, mystery-focused, "I sense..." phrasing
+- **Stats:** 34 conversations, 85+ insights tracked
+
+---
+
+## 🐛 Known Issues & Limitations
+
+### Chart Calculation
+- ✅ **Working:** AI generates charts based on astrological knowledge
+- ⚠️ **Limitation:** Not astronomical software (positions may vary slightly)
+- 💡 **Best Use:** Personality insights, not precise transit predictions
+
+### Task Execution
+- ✅ **Working:** SDK polls every 2s up to 120 attempts (4 minutes max)
+- ⚠️ **Limitation:** Tasks exceeding timeout marked as failed
+- 💡 **Mitigation:** Chart calc runs fire-and-forget (doesn't block transcript)
+
+### Context Size
+- ✅ **Working:** Full user_overview (~74KB) sent to ElevenLabs
+- ⚠️ **Limitation:** ElevenLabs prompt limit (~25K chars)
+- 💡 **Current:** Well within limits, room for growth
+
+---
+
+## 📚 Documentation
+
+- **Architecture:** [`AGENTS.md`](AGENTS.md) — Complete system overview + task creation guide
+- **Technical Docs:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Detailed architecture
+- **Progress Tracker:** [`docs/IMPLEMENTATION_CHECKLIST.md`](docs/IMPLEMENTATION_CHECKLIST.md)
+- **FAQ:** [`docs/FAQ.md`](docs/FAQ.md) — Common questions
+- **Persona:** [`docs/PERSONA.md`](docs/PERSONA.md) — Samay character details
+- **Archived:** [`.archive/`](.archive) — Old documentation files
+
+---
+
+## 🔮 Next Steps
+
+### Planned Features
+- ⏰ Daily horoscope generation task
+- 📊 Weekly summary report task
+- 🎭 Persona enrichment analysis
+- 🎮 Gamification milestone tracking
+- 💾 Memory Store MCP integration
+- 🌊 Streaming execution status (SSE instead of polling)
+
+### Performance Optimizations
+- Add Redis caching for session data
+- Optimize MongoDB queries (indexes)
+- Compress user_overview JSON before sending
+- Implement parallel task execution
+
+### User Experience
+- Show loading states for background tasks
+- Display real-time progress of chart calculation
+- Add conversation history UI
+- Export feature for birth chart (PDF/image)
+
+---
+
+## 📞 Support
+
+- **Documentation:** See `docs/` directory
+- **Agent Guide:** See `AGENTS.md` (this file syncs to `Claude.md`)
+- **Task Creation:** See "Creating New Julep Tasks" section in `AGENTS.md`
+- **Issues:** Create GitHub issue
+- **Questions:** Check `docs/FAQ.md`
+
+---
+
+**Status:** ✅ Production-ready for testing  
+**Last Tested:** October 24, 2025  
+**Test User:** Shubham Attri (full end-to-end flow successful)  
+**Next Test:** Start new conversation to verify full context awareness

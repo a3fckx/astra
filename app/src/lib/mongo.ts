@@ -126,6 +126,13 @@ export type UserOverviewBirthChart = {
 		patterns?: string[];
 		chart_summary?: string;
 	} | null;
+	famous_people?: Array<{
+		name: string;
+		category: string;
+		known_for: string;
+		birth_year: number;
+		origin?: string;
+	}>;
 	calculated_at: Date | string;
 };
 

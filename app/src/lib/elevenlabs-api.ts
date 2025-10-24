@@ -56,6 +56,19 @@ export interface ListConversationsOptions {
 	status?: "active" | "completed" | "failed";
 }
 
+export interface TranscriptFetchOptions {
+	maxAttempts?: number;
+	delayMs?: number;
+}
+
+export interface TranscriptFetchResult {
+	text: string;
+	attempts: number;
+	messageCount: number;
+	delayMs: number;
+	conversation: ConversationTranscript | null;
+}
+
 /**
  * ElevenLabs API client for conversation and transcript management
  */
@@ -175,52 +188,133 @@ export class ElevenLabsClient {
 	 * ```
 	 */
 	async getTranscriptText(conversationId: string): Promise<string> {
-		try {
-			const conversation = await this.getConversation(conversationId);
+		const result = await this.getTranscriptTextWithRetry(conversationId, {
+			maxAttempts: 1,
+		});
+		return result.text;
+	}
 
-			if (
-				!Array.isArray(conversation.transcript) ||
-				conversation.transcript.length === 0
-			) {
-				elevenLabsLogger.warn("No transcript messages found", {
+	private filterTranscriptMessages(
+		conversation: ConversationTranscript | null,
+	): ConversationMessage[] {
+		if (!conversation || !Array.isArray(conversation.transcript)) {
+			return [];
+		}
+
+		return conversation.transcript.filter((msg) => {
+			// Keep only messages with actual content
+			if (!msg.message || typeof msg.message !== "string") {
+				return false;
+			}
+			const trimmed = msg.message.trim();
+			if (!trimmed.length) {
+				return false;
+			}
+			// Skip tool calls/results
+			if (msg.tool_calls && msg.tool_calls.length > 0) {
+				return false;
+			}
+			if (msg.tool_results && msg.tool_results.length > 0) {
+				return false;
+			}
+			return true;
+		});
+	}
+
+	private async delay(ms: number) {
+		return new Promise((resolve) => {
+			setTimeout(resolve, ms);
+		});
+	}
+
+	/**
+	 * Fetch transcript text with polling retries.
+	 *
+	 * ElevenLabs can take a moment to surface transcript messages after a call ends.
+	 * This helper polls the conversation endpoint until messages are available
+	 * (or the attempt budget is exhausted).
+	 */
+	async getTranscriptTextWithRetry(
+		conversationId: string,
+		options: TranscriptFetchOptions = {},
+	): Promise<TranscriptFetchResult> {
+		const maxAttempts = Math.max(1, options.maxAttempts ?? 5);
+		const delayMs = options.delayMs ?? 2000;
+
+		let attempt = 0;
+		let lastConversation: ConversationTranscript | null = null;
+		let lastMessages: ConversationMessage[] = [];
+
+		while (attempt < maxAttempts) {
+			attempt += 1;
+			try {
+				lastConversation = await this.getConversation(conversationId);
+			} catch (error) {
+				elevenLabsLogger.error("Failed to fetch conversation transcript", {
 					conversationId,
+					attempt,
+					error: error instanceof Error ? error.message : String(error),
 				});
-				return "";
+				if (attempt >= maxAttempts) {
+					throw error;
+				}
+				elevenLabsLogger.info("Retrying transcript fetch after failure", {
+					conversationId,
+					attempt,
+					maxAttempts,
+				});
+				await this.delay(delayMs);
+				continue;
 			}
 
-			// Filter out system messages and tool calls, keep only actual dialogue
-			const transcriptText = conversation.transcript
-				.filter((msg) => {
-					// Keep only messages with actual content
-					if (!msg.message || msg.message.trim().length === 0) {
-						return false;
-					}
-					// Skip tool calls/results
-					if (msg.tool_calls && msg.tool_calls.length > 0) {
-						return false;
-					}
-					if (msg.tool_results && msg.tool_results.length > 0) {
-						return false;
-					}
-					return true;
-				})
+			lastMessages = this.filterTranscriptMessages(lastConversation);
+			const transcriptText = lastMessages
 				.map((msg) => `${msg.role.toUpperCase()}: ${msg.message}`)
 				.join("\n\n");
 
-			elevenLabsLogger.debug("Transcript text extracted", {
-				conversationId,
-				length: transcriptText.length,
-				messageCount: conversation.transcript.length,
-			});
+			if (transcriptText.length > 0) {
+				elevenLabsLogger.info("Transcript text extracted", {
+					conversationId,
+					attempt,
+					messageCount: lastMessages.length,
+				});
+				return {
+					text: transcriptText,
+					attempts: attempt,
+					messageCount: lastMessages.length,
+					delayMs,
+					conversation: lastConversation,
+				};
+			}
 
-			return transcriptText;
-		} catch (error) {
-			elevenLabsLogger.error("Failed to extract transcript text", {
-				conversationId,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			throw error;
+			if (attempt < maxAttempts) {
+				elevenLabsLogger.info("No transcript messages yet; polling again", {
+					conversationId,
+					attempt,
+					maxAttempts,
+					delayMs,
+					status: lastConversation?.status,
+				});
+				await this.delay(delayMs);
+			}
 		}
+
+		elevenLabsLogger.warn(
+			"Transcript messages still unavailable after polling attempts",
+			{
+				conversationId,
+				attempts: maxAttempts,
+				lastStatus: lastConversation?.status,
+			},
+		);
+
+		return {
+			text: "",
+			attempts: maxAttempts,
+			messageCount: lastMessages.length,
+			delayMs,
+			conversation: lastConversation,
+		};
 	}
 
 	/**
@@ -340,7 +434,9 @@ export const elevenLabsClient = new ElevenLabsClient();
 export async function fetchConversationTranscript(
 	conversationId: string,
 ): Promise<string> {
-	return elevenLabsClient.getTranscriptText(conversationId);
+	const result =
+		await elevenLabsClient.getTranscriptTextWithRetry(conversationId);
+	return result.text;
 }
 
 /**

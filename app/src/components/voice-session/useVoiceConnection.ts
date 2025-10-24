@@ -43,6 +43,7 @@ export function useVoiceConnection({
 	const [micMuted, setMicMuted] = useState(false);
 	const [isStarting, setIsStarting] = useState(false);
 	const sessionActiveRef = useRef(false);
+	const currentConversationIdRef = useRef<string | null>(null);
 
 	const { startSession, endSession } = useConversation({
 		micMuted,
@@ -76,11 +77,11 @@ export function useVoiceConnection({
 
 				if (farewellPatterns.some((pattern) => pattern.test(trimmed))) {
 					console.info(
-						"[ElevenLabs] Agent farewell detected, auto-disconnecting in 2.5s",
+						"[ElevenLabs] Agent farewell detected, auto-disconnecting in 8s",
 					);
 					setTimeout(() => {
 						void endSessionRef.current();
-					}, 2500); // 2.5s delay for graceful ending
+					}, 8000); // 8s delay for graceful ending - ensures full farewell message is heard including any follow-up
 				}
 			} else if (source === "user") {
 				console.info("[ElevenLabs] User transcript:", trimmed);
@@ -114,7 +115,17 @@ export function useVoiceConnection({
 			// ANCHOR:trigger-transcript-processing
 			// Trigger background processing immediately after conversation ends
 			// This fetches transcript, runs Julep tasks, and syncs to MongoDB
-			const conversationId = details?.conversationId;
+			// Try multiple ways to get conversation ID (SDK structure may vary)
+			const conversationId =
+				details?.conversationId ||
+				details?.conversation_id ||
+				currentConversationIdRef.current;
+
+			console.info("[ElevenLabs] Attempting to trigger transcript processing", {
+				conversationId,
+				detailsKeys: details ? Object.keys(details) : [],
+				storedConversationId: currentConversationIdRef.current,
+			});
 
 			if (conversationId) {
 				console.info(
@@ -155,8 +166,14 @@ export function useVoiceConnection({
 						error,
 					);
 				}
+			} else {
+				console.warn(
+					"[ElevenLabs] No conversation ID available for transcript processing",
+				);
 			}
 
+			// Clear the stored conversation ID
+			currentConversationIdRef.current = null;
 			sessionActiveRef.current = false;
 			setStatus("disconnected");
 		},
@@ -279,6 +296,7 @@ export function useVoiceConnection({
 				},
 			});
 			console.info("[ElevenLabs] Conversation started", conversationId);
+			currentConversationIdRef.current = conversationId;
 			void persistConversation(conversationId);
 
 			sessionActiveRef.current = true;
@@ -330,6 +348,7 @@ export function useVoiceConnection({
 		} catch (stopError) {
 			console.error("Failed to stop ElevenLabs voice session", stopError);
 		} finally {
+			currentConversationIdRef.current = null;
 			sessionActiveRef.current = false;
 			setStatus("idle");
 			setMicMuted(false);

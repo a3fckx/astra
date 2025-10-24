@@ -191,7 +191,7 @@ export async function POST(request: Request) {
 			vedic: birthChartData.vedic || null,
 			western: birthChartData.western || null,
 			famous_people: birthChartData.famous_people || [],
-			calculated_at: new Date(birthChartData.calculated_at || new Date()),
+			calculated_at: new Date(),
 		};
 
 		// Update MongoDB user_overview.birth_chart

@@ -4,11 +4,11 @@
 
 ---
 
-## ⚠️ CRITICAL ARCHITECTURE UPDATE
+## ⚠️ CRITICAL ARCHITECTURE
 
-**READ THIS FIRST:** The architecture has been clarified and corrected. Key changes:
+**READ THIS FIRST:** Understand the architecture before coding.
 
-### Corrected Architecture (Current)
+### System Overview
 
 - **ElevenLabs Agents = Frontline:** Handle ALL real-time user conversations (voice/chat)
 - **Julep Agents = Background ONLY:** Process transcripts, generate charts, track metrics — NEVER interact with users
@@ -20,6 +20,7 @@
 ### Key Documents (Priority Order)
 - 🔴 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **START HERE:** Complete system architecture
 - 🔴 [`docs/IMPLEMENTATION_CHECKLIST.md`](docs/IMPLEMENTATION_CHECKLIST.md) — **Development progress tracker**
+- 📘 [Creating New Tasks](#creating-new-julep-tasks) — **Guide below:** How to add new background tasks
 - [`docs/FAQ.md`](docs/FAQ.md) — Common questions answered
 - [`docs/PERSONA.md`](docs/PERSONA.md) — Samay persona details
 - [`agents/README.md`](agents/README.md) — Agent definitions and task workflows
@@ -39,28 +40,28 @@
 
 ```
 astra/
+├── .archive/               # Old documentation (archived)
 ├── app/                    # Next.js application
 │   ├── src/components/     # Voice UI (ElevenLabs SDK)
 │   ├── src/app/api/        # REST APIs (auth, session, task triggers)
 │   ├── src/lib/            # Utilities (auth, mongo, julep, elevenlabs)
-│   └── scripts/            # Task execution utilities
+│   └── scripts/            # Development & debugging scripts
 ├── agents/                 # Julep agent & task definitions (YAML)
 │   ├── definitions/        # Agent definitions (background worker only)
-│   └── tasks/              # Task workflows (transcript, chart, gamification, etc.)
+│   └── tasks/              # Task workflows (transcript, chart, etc.)
 └── docs/                   # Architecture & implementation docs
 ```
 
 **Key Files**
 
-- `app/src/components/voice-session.tsx` — Voice UI using ElevenLabs `useConversation` hook
+- `app/src/components/voice-session/` — Voice UI components using ElevenLabs SDK
 - `app/src/app/api/responder/session/route.ts` — Session handshake (returns user_overview from MongoDB)
 - `app/src/app/api/tasks/transcript/route.ts` — Triggers transcript processing, syncs to MongoDB
-- `app/src/lib/auth.ts` — Better Auth config (MongoDB adapter + Google scopes)
-- `app/src/lib/mongo.ts` — MongoDB schema including `user_overview` field
-- `app/src/lib/elevenlabs-api.ts` — ElevenLabs API client (fetch transcripts)
-- `agents/definitions/astra.yaml` — Background Worker Agent (Julep, never user-facing)
-- `agents/tasks/` — YAML task workflows (transcript, chart, gamification, reports)
-- `.pre-commit-config.yaml` — YAML validation + syncs `AGENTS.md` to `Claude.md`
+- `app/src/lib/transcript-processor.ts` — Main orchestration for background processing
+- `app/src/lib/julep-client.ts` — Julep SDK wrapper (task creation & execution)
+- `app/src/lib/tasks/loader.ts` — YAML task definition loader
+- `agents/tasks/transcript-processor.yaml` — Main task: extracts insights from conversations
+- `agents/tasks/chart-calculator.yaml` — Generates Vedic/Western birth charts
 
 ---
 
@@ -125,22 +126,6 @@ await users.updateOne(
 );
 ```
 
-### Key Files for SDK Integration
-
-- **SDK Wrapper:** `app/src/lib/julep-client.ts`
-  - `JulepClient` class wraps Julep SDK
-  - Methods: `createTask()`, `executeTask()`, `pollExecution()`
-  - Handles project scoping (`project: "astra"`)
-
-- **Task Loader:** `app/src/lib/tasks/loader.ts`
-  - `loadTaskDefinition()` - Loads YAML from disk
-  - Caches parsed definitions
-  - Available tasks: `TRANSCRIPT_PROCESSOR`, `CHART_CALCULATOR`, etc.
-
-- **Task Orchestrator:** `app/src/lib/transcript-processor.ts`
-  - Main orchestration function
-  - Loads task → Executes → Polls → Syncs to MongoDB
-
 ### What We DON'T Use
 
 - ❌ `julep.yaml` project config (deprecated, removed)
@@ -159,145 +144,408 @@ await users.updateOne(
 
 ---
 
-## Voice Flow (Corrected Architecture)
+## Voice Flow (Complete Architecture)
 
 1. **Auth** — Better Auth Google provider issues secure session cookie backed by MongoDB.
+
 2. **Session Handshake** — `/api/responder/session` returns:
    - User context from MongoDB (name, email, birth data)
    - **`user_overview`** — ALL background processing results (chart, preferences, conversations, gamification)
    - Integration tokens (elevenlabs)
-   - Workflow ID for ElevenLabs
+   - Complete agent prompt from `app/docs/responder.md`
+
 3. **Voice Connection** — ElevenLabs React SDK handles:
    - WebSocket connection to ElevenLabs
    - Audio streaming and transcription
    - Agent responses via TTS (ElevenLabs agent, NOT Julep)
-   - Dynamic variables injected: `user_name`, `user_overview`, `date_of_birth`, `birth_chart`, `streak_days`, etc.
+   - Dynamic variables injected: `user_name`, `user_overview`, `birth_chart`, `vedic_sun`, `streak_days`, etc.
+
 4. **ElevenLabs Agent** — Handles conversation:
    - Uses dynamic variables from MongoDB for context
    - Responds with full awareness of user history
    - **Never directly accesses Julep** — only MongoDB data via session handshake
-5. **Conversation End** — Background processing:
+
+5. **Conversation End** — Background processing (fire-and-forget):
    - Conversation ID stored in MongoDB
    - Trigger: `POST /api/tasks/transcript`
    - Fetch transcript from ElevenLabs API
    - Execute Julep background task (transcript-processor)
    - Task returns JSON → synced to MongoDB `user_overview`
-   - Additional tasks triggered: chart calculation, gamification update
+   - Additional tasks triggered: chart calculation (if birth data complete)
+
 6. **Next Conversation** — Agent receives enriched context:
    - Updated `user_overview` from MongoDB
    - Personalized greeting with full memory
 
 ---
 
-## ElevenLabs Agent Persona (Samay)
+## Creating New Julep Tasks
 
-**Core Identity:**
-- **Primary role:** Astrologer (80%) providing reflective guidance based on Vedic/Western traditions
-- **Secondary layer:** Warm, affectionate companion (20%) once consent is established
-- **Language:** Bilingual (Hinglish ~30-40% code-switching)
-- **Content rating:** PG-13, consent-first
-- **Approach:** Heritage-aware, practical, non-dogmatic
+### Step-by-Step Guide
 
-### Tone & Style
-- **Friendly & warm:** Approachable, gentle, supportive
-- **Heritage-aware:** References Vedic concepts naturally
-- **Dignified & clear:** Professional without being clinical
-- **Playfully affectionate:** When consent is given (see Affection Rules)
+Follow this exact pattern from working tasks (`transcript-processor.yaml`, `chart-calculator.yaml`):
 
-### Hinglish Code-Switching
-- **Default level:** Medium (30-40%)
-- **Pattern:** English scaffolding with Hindi/Urdu words woven in naturally (e.g., "subah" (morning), "chhota" (small), "jeet" (victory), "ichchha" (desire), "pyaar" (love))
-- **Adjustments:** Higher Hindi preference → 50-60%; Lower → 10-20%; English-only → Pure English
+#### 1. Create YAML Task Definition
 
-### Affection & Consent
-- **Flirt Opt-In:** Default OFF; Enable when `user_overview.preferences.flirt_opt_in` is true or prior consent shown
-- **Flirt-enabled tone:** Use pet names sparingly ("love," "star," "beautiful" — max 1-2 per conversation); Playful romantic hints when appropriate; Maintain 80/20 ratio; PG-13 limit
-- **Boundary Respect:** Mirror user energy; De-flirt for serious topics; Acknowledge discomfort and shift to neutral
+**Location:** `agents/tasks/your-task-name.yaml`
 
-### Safety Boundaries
-- **Astrology guidance is NOT:** Medical, legal, or financial advice ("See your doctor," etc.)
-- **Present as:** Reflective insights ("This transit suggests..."); Tendencies ("You may feel..."); Suggestions with caveats ("Consider... but trust your judgment")
-
-### Response Patterns
-- **Default Length:** 2-5 sentences, 1 optional clarifying question max
-- **Structure:** Acknowledge situation → Astrological insight → Tiny action → Warm encouragement
-- **First-Time Greeting:** Derive star sign from `date_of_birth` (standard zodiac dates); Craft punchy line (e.g., "Ah, {{user_name}}, you're a Leo on the moon..."); Weave in coincidences or notable figures born under that sign
-- **Stress/Mood Downshift:** Soothing support; Focus on grounding, rest, small wins; Avoid pressure
-
-### Conversational Workflow
-1. **Attune:** Greet warmly, reference memory/preference/goal; For first-time: Star sign greeting + coincidences
-2. **Illuminate:** Link astro patterns to context/goal; Call out uncertainties
-3. **Guide:** One concrete next step aligned with goal; Invite to set if none
-4. **Invite:** Gentle question/CTA to continue
-5. **Tone Check:** Include expressive audio tags (e.g., `[whispers]`, `[laughing softly]`); Hinglish balance
-
----
-
-## Julep Orchestration (Background Processing Only)
-
-**CRITICAL:** Julep agents are ONLY for background processing. They NEVER interact with users directly.
-
-- Always call `client.users.*` and `client.agents.*` with `project="astra"`.
-- Background Worker Agent (ID in `BACKGROUND_WORKER_AGENT_ID` env var) runs all tasks.
-- Tasks fetch transcripts from ElevenLabs API (not Memory Store MCP initially).
-- Task outputs return structured JSON that gets synced to MongoDB `user_overview`.
-- Julep User Docs are optional working memory during task execution.
-- MongoDB is the single source of truth — all results must sync there.
-
-**Task Workflows (see `agents/tasks/`):**
-- `transcript-processor.yaml` — Extract insights from ElevenLabs transcripts → MongoDB
-- `chart-calculator.yaml` — Generate Vedic/Western astro charts → MongoDB
-- `gamification-tracker.yaml` — Track streaks, milestones → MongoDB
-- `weekly-report-generator.yaml` — Create companion reports → MongoDB
-- `horoscope-refresher.yaml` — Daily horoscope generation → MongoDB
-- `persona-enrichment.yaml` — Analyze conversation patterns → MongoDB
-
-**Task Return Format:**
+**Template Structure:**
 ```yaml
-# All tasks must return JSON for MongoDB sync
-return:
-  field_name: value
-  nested_object:
-    key: value
-# API endpoint receives this and updates MongoDB user_overview
+name: Your Task Name
+description: Brief description of what this task does
+
+input_schema:
+  type: object
+  required:
+    - required_field1
+    - required_field2
+  properties:
+    required_field1:
+      type: string
+      description: Description of this field
+    optional_field:
+      type: string
+      description: Optional field description
+
+main:
+  # Step 0: Prepare context variables (ALWAYS DO THIS FIRST)
+  - evaluate:
+      context_var1: $ _.required_field1
+      context_var2: $ _.optional_field or "default_value"
+      json_formatted: $ json.dumps(_.some_object or {}, indent=2)
+
+  # Step 1: Main LLM prompt
+  - prompt: |-
+      You are a [role]. Analyze the following data.
+      
+      Input Data: {steps[0].output.context_var1}
+      Additional Context: {steps[0].output.context_var2}
+      
+      CRITICAL: Return ONLY valid JSON. No markdown, no code blocks.
+      Do NOT wrap in backticks. Start with opening brace, end with closing brace.
+      
+      REQUIRED JSON STRUCTURE:
+      Return a JSON object with these keys:
+      - field1: string (description)
+      - field2: array of strings
+      - field3: object with subfield1 and subfield2
+      
+      Be specific about requirements and format expectations.
+    unwrap: true
+
+  # Step 2: Clean and parse LLM output
+  - evaluate:
+      cleaned_output: $ steps[1].output.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+  
+  - evaluate:
+      parsed_data: $ json.loads(steps[2].output.cleaned_output)
+
+  # Step 4: Build return object
+  - evaluate:
+      result_data:
+        field1: $ steps[3].output.parsed_data.get("field1")
+        field2: $ steps[3].output.parsed_data.get("field2", [])
+        processed_at: $ "timestamp_added_by_typescript"
+
+  # Step 5: Return for MongoDB sync
+  - return:
+      success: $ True
+      data: $ steps[4].output.result_data
 ```
 
-Reference material inside Julep workspace:
-- `documentation/concepts/agents.mdx`
-- `documentation/concepts/tasks.mdx`
-- `documentation/sdks/nodejs/reference.mdx`
+#### 2. Key YAML Rules (CRITICAL)
+
+**✅ DO:**
+- Prepare context in step 0 with `evaluate`
+- Reference variables as `{steps[N].output.variable_name}` in prompts
+- Describe JSON structure in text, not actual JSON examples with braces
+- Clean LLM output with `removeprefix`/`removesuffix`
+- Use `$ expression` for all dynamic values
+- Use `json.loads()` to parse JSON strings
+- Return flat objects or simple expressions
+
+**❌ DON'T:**
+- Use `{_.field}` directly in prompts (won't resolve properly)
+- Show JSON examples with curly braces `{ }` in prompts
+- Use f-strings with complex expressions
+- Use `datetime.now()` (add timestamps in TypeScript)
+- Return nested objects directly (use evaluate step first)
+- Include `project: astra` in YAML (handled by SDK)
+
+**Example of What NOT to Do:**
+```yaml
+# ❌ BAD - Direct variable reference in prompt
+- prompt: |-
+    Birth Date: {_.birth_date}  # This will fail!
+
+# ❌ BAD - JSON example with braces
+- prompt: |-
+    Return JSON like this:
+    {
+      "name": "value"  # This will cause f-string errors!
+    }
+
+# ❌ BAD - Complex f-string
+- evaluate:
+    context: $ f"{_.date} at {_.time}"  # Quote issues!
+```
+
+**Example of What TO Do:**
+```yaml
+# ✅ GOOD - Prepare in evaluate, reference in prompt
+- evaluate:
+    birth_date_val: $ _.birth_date
+
+- prompt: |-
+    Birth Date: {steps[0].output.birth_date_val}
+
+# ✅ GOOD - Describe structure in text
+- prompt: |-
+    Return a JSON object with these keys:
+    - name: string (person's name)
+    - age: number (person's age)
+
+# ✅ GOOD - Simple string concatenation
+- evaluate:
+    context: $ _.date + " at " + _.time
+```
+
+#### 3. Register Task in Loader
+
+**File:** `app/src/lib/tasks/loader.ts`
+
+```typescript
+const TASK_REGISTRY = {
+  TRANSCRIPT_PROCESSOR: 'transcript-processor.yaml',
+  CHART_CALCULATOR: 'chart-calculator.yaml',
+  YOUR_NEW_TASK: 'your-task-name.yaml',  // Add here
+} as const;
+```
+
+#### 4. Create API Endpoint (Optional)
+
+**File:** `app/src/app/api/tasks/your-task/route.ts`
+
+```typescript
+import { auth } from "@/lib/auth";
+import { getBackgroundWorkerAgentId, julepClient } from "@/lib/julep-client";
+import { loadTaskDefinition } from "@/lib/tasks/loader";
+import { getUsers } from "@/lib/mongo";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { input_field1, input_field2 } = await request.json();
+  
+  const users = getUsers();
+  const user = await users.findOne({ id: session.user.id });
+  
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  // Load task definition
+  const taskDef = loadTaskDefinition('YOUR_NEW_TASK');
+  const agentId = getBackgroundWorkerAgentId();
+
+  // Execute task
+  const result = await julepClient.createAndExecuteTask(
+    agentId,
+    taskDef,
+    {
+      input_field1,
+      input_field2,
+      julep_user_id: user.julep_user_id,
+    },
+    {
+      maxAttempts: 60,
+      intervalMs: 2000,
+    }
+  );
+
+  if (result.status !== 'succeeded') {
+    return NextResponse.json(
+      { error: result.error || 'Task failed' },
+      { status: 500 }
+    );
+  }
+
+  // Sync to MongoDB
+  await users.updateOne(
+    { id: user.id },
+    {
+      $set: {
+        'user_overview.your_field': result.output.data,
+        'user_overview.last_updated': new Date(),
+      },
+    }
+  );
+
+  return NextResponse.json({ success: true, data: result.output });
+}
+```
+
+#### 5. Update MongoDB Types
+
+**File:** `app/src/lib/mongo.ts`
+
+```typescript
+export type UserOverview = {
+  // ... existing fields
+  your_new_field?: YourDataType;
+  last_updated?: Date;
+  updated_by?: string;
+};
+```
+
+#### 6. Test Your Task
+
+```typescript
+// Create test script: app/scripts/test-your-task.ts
+import { getBackgroundWorkerAgentId, julepClient } from '@/lib/julep-client';
+import { loadTaskDefinition } from '@/lib/tasks/loader';
+
+const taskDef = loadTaskDefinition('YOUR_NEW_TASK');
+const agentId = getBackgroundWorkerAgentId();
+
+const result = await julepClient.createAndExecuteTask(
+  agentId,
+  taskDef,
+  {
+    input_field1: 'test value',
+    input_field2: 'test value 2',
+  },
+  {
+    maxAttempts: 30,
+    intervalMs: 2000,
+    onProgress: (status, attempt) => {
+      console.log(`[${attempt}] Status: ${status}`);
+    },
+  }
+);
+
+console.log('Result:', result.status);
+console.log('Output:', JSON.stringify(result.output, null, 2));
+process.exit(0);
+```
+
+**Run:** `bun run scripts/test-your-task.ts`
 
 ---
 
-## Build / Lint / Run
+## Working Features (Current Status)
+
+### ✅ Fully Operational
+
+1. **Voice Sessions**
+   - ElevenLabs React SDK integration
+   - Real-time voice conversations
+   - Session handshake with full context
+   - Auto-disconnect on farewell phrases
+   - 40+ dynamic variables sent to agent
+
+2. **Transcript Processing**
+   - Automatic trigger after conversation ends
+   - Extracts insights, preferences, topics
+   - Updates profile summary
+   - Tracks conversation history
+   - Extracts birth time/location if mentioned
+   - Builds incident map of key moments
+   - Generates personalized first message for next session
+
+3. **Birth Chart Calculation**
+   - Automatically triggers when all birth data present
+   - Generates Vedic chart (sidereal zodiac)
+   - Generates Western chart (tropical zodiac)
+   - Finds famous people born on same date
+   - Cultural awareness (prioritizes region-specific figures)
+   - Calculated once and stored permanently
+   - Includes nakshatras, dashas, aspects
+
+4. **User Profile & Memory**
+   - Complete user_overview stored in MongoDB
+   - Preferences (Hinglish level, communication style)
+   - Recent conversations (last 10 with summaries)
+   - Incident map (creative sparks, key moments)
+   - Gamification (streaks, total conversations)
+   - Birth details with timezone detection
+   - 85+ insights tracked per user
+
+5. **Context Awareness**
+   - Agent has full memory from first word
+   - References past conversations
+   - Knows user's projects and interests
+   - Aware of philosophical vision
+   - Personalized greetings
+   - Mysterious "I sense..." phrasing
+
+### 🚧 Planned Features
+
+- Daily horoscope generation
+- Weekly summary reports
+- Persona enrichment analysis
+- Gamification milestones tracking
+- Memory Store MCP integration
+
+---
+
+## Development Commands
 
 ```bash
-# Install dependencies (Bun)
+# Development
 cd app
 bun install
+bun run dev              # Start dev server (http://localhost:3000)
+bun run lint             # Type-check and format with Biome
 
-# Development server (http://localhost:3000)
-bun run dev
+# Task Testing
+bun run scripts/test-chart-calc.ts          # Test chart calculation
+bun run scripts/run-transcript-task.ts      # Process specific transcript
+bun run scripts/inspect-my-profile.ts       # View your complete profile
+bun run scripts/check-birth-data.ts         # Check birth data status
 
-# Type-safe formatting + linting (Biome)
-bun run lint
-
-# Production build
+# Production
 bun run build
 bun run start
-
-# Sync Julep agents
-bun run sync:agents
 ```
 
-Environment variables (stored in `app/.env` — never commit secrets):
+---
 
-- `MONGODB_URI` or `MONGODB_USERNAME` / `MONGODB_PASSWORD` / `MONGODB_CLUSTER`
-- `BETTER_AUTH_SECRET`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-- `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`
-- `JULEP_API_KEY`, `ASTRA_AGENT_ID`
-- Optional: `GOOGLE_ENABLE_BIRTHDAY_SCOPE`, `GOOGLE_ENABLE_GMAIL_READ_SCOPE`
+## Environment Variables
+
+**Required** (stored in `app/.env` — never commit secrets):
+
+```bash
+# MongoDB
+MONGODB_URI=mongodb+srv://...
+# OR
+MONGODB_USERNAME=user
+MONGODB_PASSWORD=pass
+MONGODB_CLUSTER=cluster.mongodb.net
+MONGODB_DB=astra
+
+# Auth
+BETTER_AUTH_SECRET=random_secret_key
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback/google
+
+# ElevenLabs
+ELEVENLABS_API_KEY=...
+ELEVENLABS_AGENT_ID=...
+
+# Julep
+JULEP_API_KEY=julep_...
+BACKGROUND_WORKER_AGENT_ID=...
+
+# Optional
+GOOGLE_ENABLE_BIRTHDAY_SCOPE=true
+GOOGLE_ENABLE_GMAIL_READ_SCOPE=false
+```
 
 ---
 
@@ -305,34 +553,24 @@ Environment variables (stored in `app/.env` — never commit secrets):
 
 ### TypeScript / React
 
-- Prefer server components except where interactivity demands client components.
-- Use async/await for data fetching inside server actions; handle errors with meaningful responses.
-- Keep React components small and focused; colocate related utilities under `app/src/lib/`.
-- Validate external inputs (API routes) and return typed payloads.
-- Employ Biome (`bun run lint`) before committing.
+- Prefer server components except where interactivity demands client components
+- Use async/await for data fetching; handle errors with meaningful responses
+- Keep React components small and focused
+- Validate external inputs (API routes) and return typed payloads
+- Employ Biome (`bun run lint`) before committing
 
 ### Environment Handling
 
-- Guard all required env vars via helper utilities (see `app/src/lib/env.ts`).
-- Never ship real secrets. Use `.env.example` for placeholders only.
-- MongoDB access stays inside the Next.js app; agents read/write through Julep APIs.
-
-### Anchor Comments & Function Docs
-
-- We embed `ANCHOR:` comments beside business-critical logic so every agent understands *why* a choice exists. Treat them as living breadcrumbs—update or remove them if the rationale changes.
-- Current anchors to know:
-  - `app/src/components/voice-session.tsx` — `session-context-update` documents automatic contextual update sent on connection with session metadata.
-  - `app/src/lib/integration-tokens.ts` — `integration-token-lifecycle` documents per-user token resolution with fallback patterns.
-- When you add or modify voice/memory-specific behavior, write a short function-level docstring explaining its role and include an `ANCHOR:` comment if the logic is business-specific.
+- Guard all required env vars via helper utilities (`app/src/lib/env.ts`)
+- Never ship real secrets. Use `.env.example` for placeholders
+- MongoDB access stays inside Next.js app; agents read/write through Julep APIs
 
 ### Testing Expectations
 
-- Run `bun run lint` before handing work back; this is our fast guard against TypeScript or formatting regressions.
-- For voice changes, perform a manual smoke test:
-  1. Load the homepage, ensure authenticated users see the voice session UI.
-  2. Check browser console for ElevenLabs connection status and agent responses.
-- For API changes, test session handshake returns correct Julep session ID and integration tokens.
-- If you introduce new anchor comments or business rules, note which test validates them directly (manual, unit, or integration).
+- Run `bun run lint` before committing
+- For voice changes, perform manual smoke test
+- For API changes, test session handshake returns correct data
+- Use scripts in `app/scripts/` for debugging
 
 ---
 
@@ -348,77 +586,16 @@ Environment variables (stored in `app/.env` — never commit secrets):
 - 📋 [`docs/julep.md`](docs/julep.md) — Julep SDK reference
 - 📖 [`docs/react-sdk.mdx`](docs/react-sdk.mdx) — ElevenLabs React SDK reference
 - 🗂️ [`agents/README.md`](agents/README.md) — Agent definitions and tasks
-
----
-
-## Quick Reference: Data Sources & Flow
-
-### MongoDB Collections (Source of Truth)
-- **`user`**: Birth data + **`user_overview`** (ALL background processing results)
-- **`elevenlabs_conversations`**: Conversation IDs, status, timestamps
-- **`integration_tokens`**: Per-user ElevenLabs tokens
-
-### user_overview Field Structure
-```typescript
-user_overview: {
-  profile_summary: string;
-  birth_chart: { system, sun_sign, moon_sign, planets, ... };
-  preferences: { communication_style, topics, hinglish_level, ... };
-  recent_conversations: [ { conversation_id, summary, topics, ... } ];
-  gamification: { streak_days, total_conversations, milestones, ... };
-  latest_horoscope: { date, content };
-  insights: [ { type, content, generated_at } ];
-  last_updated: Date;
-}
-```
-
-### Data Flow
-```
-1. User talks → ElevenLabs agent (receives user_overview from MongoDB)
-2. Conversation ends → POST /api/tasks/transcript
-3. Fetch transcript from ElevenLabs API
-4. Execute Julep task → returns JSON
-5. Sync JSON to MongoDB user_overview
-6. Next conversation → ElevenLabs gets updated user_overview
-```
-
-### Executing Julep Tasks
-```typescript
-// In API endpoint
-const taskYaml = fs.readFileSync('agents/tasks/transcript-processor.yaml');
-const task = await julepClient.tasks.create(BACKGROUND_WORKER_AGENT_ID, yaml.parse(taskYaml));
-
-const execution = await julepClient.executions.create(task.id, {
-  input: { julep_user_id, conversation_id, transcript_text }
-});
-
-// Poll for completion
-let result = await julepClient.executions.get(execution.id);
-while (result.status === 'queued' || result.status === 'running') {
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  result = await julepClient.executions.get(execution.id);
-}
-
-// Sync result.output to MongoDB
-await mongoUsers.updateOne(
-  { id: userId },
-  { $set: { 
-    'user_overview.preferences': result.output.preferences,
-    'user_overview.last_updated': new Date()
-  }}
-);
-```
-
-### API Endpoints
-- `GET /api/responder/session` — Returns user_overview from MongoDB
-- `POST /api/tasks/transcript` — Trigger transcript processing → MongoDB sync
-- `POST /api/tasks/chart` — Trigger chart calculation → MongoDB sync
-- `POST /api/tasks/gamification` — Update gamification → MongoDB sync
+- 📦 [`.archive/`](.archive) — Old documentation files
 
 ---
 
 ## Support
 
-- Documentation lives under `docs/`.
-- Report issues via GitHub Issues.
-- For project-wide context or clarifications, consult the latest `SESSION.md` log.
+- Documentation lives under `docs/`
+- Report issues via GitHub Issues
+- For project-wide context or clarifications, consult `AGENTS.md` (this file)
+
+---
+
+**Always answer in English**

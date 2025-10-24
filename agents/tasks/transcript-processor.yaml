@@ -48,9 +48,9 @@ main:
       ANCHOR: birth-data-extraction-rules
       CRITICAL BIRTH DATA RULES:
       - Birth DATE: NEVER extract (always exists from Google OAuth, ignore if mentioned)
-      - Birth TIME: Extract ONLY if user explicitly mentions time of birth
+      - Birth TIME: Extract ONLY if user explicitly mentions time of birth (e.g., "7:15 AM", "around 7 AM")
       - Birth PLACE: Extract ONLY if user explicitly mentions birth location (city/country)
-      - Format time naturally: "7am", "morning", "around 3pm" → Store as-is
+      - Format time as HH:MM in 24-hour format: "7:15 AM" → "07:15", "3:30 PM" → "15:30"
       - Format place naturally: "Jhajjar, Haryana" or "New York" → Extract city and country
 
       ANCHOR: incident-map-rules
@@ -67,7 +67,7 @@ main:
       - conversation_summary: object with summary, topics array, key_insights array, questions_asked array, emotional_tone
       - memories: array of objects with title, content, importance (low/normal/high)
       - incident_map: array of objects with optional title, description (1-2 sentences), tags array
-      - birth_details: object with city, country, place_text (all optional, only if explicitly mentioned)
+      - birth_details: object with birth_time (HH:MM 24-hour format), city, country, place_text (all optional, only if explicitly mentioned)
       
       PREFERENCES OBJECT STRUCTURE:
       - communication_style: one of casual, balanced, formal, or null
@@ -83,7 +83,7 @@ main:
       
       EXTRACTION RULES:
       1. NEVER extract birth DATE (always exists from OAuth)
-      2. Extract birth TIME and PLACE only if explicitly mentioned in conversation
+      2. Extract birth TIME (as HH:MM 24-hour) and PLACE only if explicitly mentioned in conversation
       3. Detect Hinglish usage level (0=none, 100=high)
       4. Limit memories to important facts, not chitchat
       5. Use null for unchanged/unknown fields
