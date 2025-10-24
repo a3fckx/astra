@@ -17,6 +17,19 @@ type CliArgs = {
 
 const DEFAULT_LIMIT = 3;
 
+/**
+ * Parse CLI arguments to collect conversation IDs, a processing limit, and a pending-only flag.
+ *
+ * Supported options:
+ * - `--conversation` or `-c` followed by an ID (can be repeated)
+ * - `--limit` or `-l` followed by a positive integer
+ * - `--pending` or `--pending-only` (flag)
+ *
+ * @returns An object containing:
+ * - `conversationIds`: an array of provided conversation IDs
+ * - `limit`: the parsed positive integer limit (defaults to DEFAULT_LIMIT if not provided or invalid)
+ * - `pendingOnly`: `true` if the pending flag was present, `false` otherwise
+ */
 function parseArgs(): CliArgs {
 	const args = process.argv.slice(2);
 	const conversationIds: string[] = [];
@@ -54,6 +67,14 @@ function parseArgs(): CliArgs {
 	return { conversationIds, limit, pendingOnly };
 }
 
+/**
+ * Load ElevenLabs conversations either by explicit IDs or by a query with sorting and a result limit.
+ *
+ * @param conversationIds - If non-empty, return conversations whose `conversation_id` is in this list.
+ * @param limit - Maximum number of conversations to return when `conversationIds` is empty.
+ * @param pendingOnly - If true, only include conversations where `metadata.transcript_processed` is not `true`.
+ * @returns An array of matching ElevenLabsConversation objects.
+ */
 async function loadConversations(
 	conversationIds: string[],
 	limit: number,
@@ -81,6 +102,15 @@ async function loadConversations(
 		.toArray();
 }
 
+/**
+ * Orchestrates loading and processing of ElevenLabs transcript conversations based on CLI arguments.
+ *
+ * Parses command-line arguments, loads matching conversations (optionally only pending), and for each
+ * conversation validates the associated user and required identifiers before invoking transcript processing.
+ * After processing, refreshes the user record and logs processing results (including task/execution IDs,
+ * memory count, summary presence, and any change to the user's `user_overview.first_message`). Errors for
+ * individual conversations are logged and processing continues with the next conversation.
+ */
 async function main() {
 	const { conversationIds, limit, pendingOnly } = parseArgs();
 

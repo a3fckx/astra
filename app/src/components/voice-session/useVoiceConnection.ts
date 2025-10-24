@@ -28,6 +28,29 @@ type UseVoiceConnectionProps = {
 	dynamicVariables: Record<string, string | number | boolean> | undefined;
 };
 
+/**
+ * Manage an ElevenLabs voice session for an agent, exposing lifecycle controls and connection state.
+ *
+ * Initializes and coordinates session start/stop, handles SDK callbacks (messages, errors, disconnects),
+ * triggers transcript processing and conversation persistence, and exposes microphone and status controls.
+ *
+ * @param agentId - Identifier of the agent to connect the voice session to
+ * @param handshake - Session handshake data (or null) containing required session identifiers and user info
+ * @param handshakeLoaded - True when handshake data has finished loading
+ * @param micStatus - Current microphone permission/state used to surface appropriate errors or warnings
+ * @param requestMicAccess - Function to request microphone access from the user
+ * @param agentPrompt - Optional prompt override to send to the agent at session start
+ * @param agentFirstMessage - Optional initial message the agent should speak when the session begins
+ * @param dynamicVariables - Optional map of dynamic variables provided to the agent at session start (used instead of sending JSON context mid-session)
+ * @returns An object containing:
+ * - `status`: current connection status ("idle" | "connecting" | "connected" | "disconnected")
+ * - `error`: optional error message to surface to the UI
+ * - `micMuted`: whether the local microphone is muted
+ * - `isStarting`: whether a start flow is in progress
+ * - `handleStart`: function to start a voice session
+ * - `handleStop`: function to stop the active voice session
+ * - `toggleMute`: function to toggle microphone mute state
+ */
 export function useVoiceConnection({
 	agentId,
 	handshake,

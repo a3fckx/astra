@@ -4,6 +4,13 @@ import { logger } from "@/lib/logger";
 
 const scriptLogger = logger.child("scripts:julep-inspect");
 
+/**
+ * Inspect and print Julep project assets for project "astra": agents, optional background-agent tasks, users, and latest docs for the first user.
+ *
+ * Logs progress and prints numbered lists to stdout. If BACKGROUND_WORKER_AGENT_ID is set it also lists tasks for that agent.
+ *
+ * @throws Error if JULEP_API_KEY is not set
+ */
 async function main() {
 	const apiKey = process.env.JULEP_API_KEY;
 	if (!apiKey) {

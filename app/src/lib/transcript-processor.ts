@@ -41,20 +41,15 @@ const cloneOverview = (overview: UserOverview | null) =>
 	overview ? (JSON.parse(JSON.stringify(overview)) as UserOverview) : null;
 
 /**
- * ANCHOR:background-task-orchestration
+ * Orchestrates post-conversation processing after an ElevenLabs conversation ends.
  *
- * Core orchestration flow for background processing after ElevenLabs conversation ends:
+ * Fetches the transcript, optionally resolves a Memory Store token, runs the transcript
+ * processor task, merges extracted insights into the user's overview in MongoDB, and
+ * optionally triggers downstream background tasks (e.g., chart calculation).
  *
- * 1. Fetch conversation transcript from ElevenLabs API
- * 2. Resolve user's Memory Store integration token (if available)
- * 3. Load transcript-processor.yaml task definition
- * 4. Execute Julep task with polling until completion
- * 5. Task returns structured JSON with insights, preferences, conversation summary
- * 6. Merge task output into MongoDB user_overview field
- * 7. Optional: Task can persist memories to Memory Store via MCP integration
- *
- * This function is the main entry point for all post-conversation processing.
- * Additional tasks (gamification, charts) are triggered asynchronously after this completes.
+ * @returns An object containing `task_id`, `execution_id`, `conversation_id`, `overview_updates`, `conversation_summary`, `memories_count`, and the merged `merged_overview`.
+ * @throws If fetching the transcript from ElevenLabs fails.
+ * @throws If the transcript processor task completes with a non‑succeeded status.
  */
 export async function processTranscriptConversation({
 	user,

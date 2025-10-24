@@ -31,6 +31,20 @@ const tokenPayload = (record: IntegrationToken | null) =>
 const isExpired = (record: IntegrationToken | null) =>
 	!!(record?.expiresAt && record.expiresAt.getTime() <= Date.now());
 
+/**
+ * Assemble and return responder session data, available integrations, and the responder prompt.
+ *
+ * Authenticates the request, looks up the user, optionally initializes or retrieves a Julep session,
+ * resolves stored integration tokens (marking expired or missing tokens as `null`), and loads the
+ * responder prompt template before returning a consolidated JSON payload.
+ *
+ * @returns An object with three top-level fields:
+ *  - `session`: session metadata including `workflowId`, `julep` (`sessionId` and `userId` when available),
+ *    `user` (fields `id`, `email`, `name`, `dateOfBirth` as `YYYY-MM-DD` or `null`, `birthTime`, `birthPlace`),
+ *    and `overview` (the complete `user_overview` object).
+ *  - `integrations`: a mapping of known integration names to token payloads (normalized token info) or `null`.
+ *  - `prompt`: the responder prompt template string, or `null` if not loaded.
+ */
 export async function GET(request: Request) {
 	const session = await auth.api.getSession({
 		headers: request.headers,

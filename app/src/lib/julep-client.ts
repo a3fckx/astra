@@ -462,9 +462,10 @@ export class JulepClient {
 export const julepClient = new JulepClient();
 
 /**
- * Get the background worker agent ID from environment
+ * Retrieve the background worker agent ID from the BACKGROUND_WORKER_AGENT_ID environment variable.
  *
- * Supports legacy env var names for backwards compatibility
+ * @returns The configured background worker agent ID.
+ * @throws If `BACKGROUND_WORKER_AGENT_ID` is not set in the environment.
  */
 export function getBackgroundWorkerAgentId(): string {
 	const agentId = env.backgroundWorkerAgentId;

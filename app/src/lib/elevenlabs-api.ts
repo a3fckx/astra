@@ -421,15 +421,10 @@ export class ElevenLabsClient {
 export const elevenLabsClient = new ElevenLabsClient();
 
 /**
- * Fetch conversation transcript text (convenience function)
+ * Get the formatted transcript text for the specified ElevenLabs conversation.
  *
  * @param conversationId - The ElevenLabs conversation ID
- * @returns Formatted transcript text
- *
- * @example
- * ```typescript
- * const text = await fetchConversationTranscript('conv_abc123');
- * ```
+ * @returns The conversation transcript formatted as role-labeled paragraphs; an empty string if no transcript is available
  */
 export async function fetchConversationTranscript(
 	conversationId: string,

@@ -18,6 +18,12 @@ type InspectArgs = {
 	limit: number;
 };
 
+/**
+ * Parse command-line tokens into an InspectArgs object for the inspect script.
+ *
+ * @param argv - Command-line tokens (for example, `process.argv.slice(2)`). Recognized flags: `--conversation`/`-c` <id>, `--user`/`-u` <id>, `--limit`/`-l` <positive integer>
+ * @returns An InspectArgs object containing optional `conversationId`, optional `userId`, and `limit` (positive integer, defaults to 1)
+ */
 function parseArgs(argv: string[]): InspectArgs {
 	const args: InspectArgs = { limit: 1 };
 
@@ -42,6 +48,13 @@ function parseArgs(argv: string[]): InspectArgs {
 	return args;
 }
 
+/**
+ * Create a new object containing only the specified properties from an input object.
+ *
+ * @param input - The source object to pick properties from, or `null`/`undefined` to indicate absence.
+ * @param fields - An array of keys to include in the result; keys not present on `input` are omitted.
+ * @returns An object with the selected properties from `input` (only keys present on `input`), or `null` if `input` is `null` or `undefined`
+ */
 function pick<T extends Record<string, unknown>>(
 	input: T | null | undefined,
 	fields: (keyof T)[],
@@ -57,6 +70,11 @@ function pick<T extends Record<string, unknown>>(
 	}, {});
 }
 
+/**
+ * Fetches ElevenLabs conversations from Mongo (filtered by CLI flags) and prints compact summaries with associated Mongo user snapshots.
+ *
+ * Parses CLI flags (--conversation / -c, --user / -u, --limit / -l), queries the ElevenLabs conversations collection (sorted by `updated_at` descending and limited), and for each result prints a JSON conversation summary followed by a JSON "Mongo User Snapshot" for the corresponding user. If no conversations match the query the function prints a message and exits the process with code 0.
+ */
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
 
