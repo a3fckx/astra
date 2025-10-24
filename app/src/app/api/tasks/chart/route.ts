@@ -8,24 +8,17 @@ import { loadTaskDefinition } from "@/lib/tasks/loader";
 const chartLogger = logger.child("api:tasks:chart");
 
 /**
- * POST /api/tasks/chart
+ * Trigger calculation of a user's birth chart (Vedic and Western) and persist the result to MongoDB.
  *
- * ANCHOR:chart-task-trigger
+ * Accepts a JSON request body with optional fields:
+ * - `user_id`: target user id; defaults to the authenticated user if omitted.
+ * - `force_recalculate`: boolean; when `true`, forces recalculation even if a chart already exists (default: `false`).
+ * - `chart_system`: `"vedic" | "western" | "both"`; indicates desired system but the endpoint generates both systems.
  *
- * Triggers chart calculation task and syncs results to MongoDB user_overview.birth_chart
+ * Requirements for successful calculation: the target user must have `date_of_birth` (YYYY-MM-DD), `birth_time` (HH:MM),
+ * and `birth_location`. The user's `julep_user_id` must be present and the requester must be authenticated.
  *
- * Requirements for chart calculation:
- * - Date of birth (YYYY-MM-DD)
- * - Birth time (HH:MM)
- * - Birth location (City, Country)
- * - Timezone (optional but recommended)
- *
- * Request body:
- * {
- *   user_id?: string;          // Optional, defaults to authenticated user
- *   force_recalculate?: boolean; // Force recalculation even if chart exists
- *   chart_system?: "vedic" | "western" | "both"; // Default: vedic
- * }
+ * @returns An object describing the outcome. On success includes `success: true`, `task_id`, `execution_id`, a `message`, and `chart` containing `system`, `vedic`, `western`, `famous_people`, and `calculated_at`. On failure includes `success: false` or `error` with status-specific details.
  */
 export async function POST(request: Request) {
 	try {

@@ -178,11 +178,11 @@ export function generateFirstMessage(
 }
 
 /**
- * Builds dynamic variables object for ElevenLabs session
- * ANCHOR:dynamic-session-variables
- * These fields must stay aligned with app/docs/responder.md
+ * Build a sanitized map of dynamic session variables for the ElevenLabs voice responder.
  *
- * Strategy: Pass complete user_overview JSON for full context; expose quick access fields and boolean flags.
+ * Produces a single-object payload that includes a full `user_overview` JSON plus convenient quick-access fields and boolean flags (identity, session IDs, chart status and details, birth-data presence, preferences, horoscope flag, gamification and engagement metrics). Fields are intended to stay aligned with app/docs/responder.md.
+ *
+ * @returns A record mapping variable names to `string | number | boolean`, or `undefined` if there are no valid entries to return.
  */
 export function buildDynamicVariables(
 	handshake: SessionHandshake,

@@ -113,6 +113,17 @@ export async function searchUserDocs(
 	}
 }
 
+/**
+ * Create a "Conversation Summary" document for a user, associating it with a session.
+ *
+ * The function stores the provided summary as a doc titled with the current date and includes metadata
+ * (type "notes", scope "frontline", shared flag, timestamp, and `source` set to the session id).
+ * Failures are logged and not propagated.
+ *
+ * @param julepUserId - The Julep user id to associate the document with
+ * @param summary - The conversation summary content to store
+ * @param sessionId - The session identifier to record in the document metadata (`source`)
+ */
 export async function writeConversationSummary(
 	julepUserId: string,
 	summary: string,
@@ -164,6 +175,13 @@ export async function createOrGetSession(julepUserId: string, agentId: string) {
 	}
 }
 
+/**
+ * Retrieve an existing Julep session ID for a user-agent pair or create and persist a new session mapping.
+ *
+ * @param julepUserId - The Julep user identifier to find or create a session for
+ * @returns The Julep session ID associated with the user and background worker agent
+ * @throws If the BACKGROUND_WORKER_AGENT_ID configuration is missing
+ */
 export async function getOrCreateJulepSession(
 	julepUserId: string,
 ): Promise<string> {

@@ -5,6 +5,14 @@ let cachedResponderPrompt: string | null = null;
 
 const candidateRoots = [process.cwd(), join(process.cwd(), "..")];
 
+/**
+ * Load the responder prompt template from disk and cache its trimmed content.
+ *
+ * Attempts to read "docs/responder.md" from a set of candidate roots; on first successful read the file's trimmed contents are cached and returned.
+ *
+ * @returns The trimmed responder prompt template as a string.
+ * @throws Error if the template is not found in any checked locations or if a filesystem error other than `ENOENT` occurs.
+ */
 export async function getResponderPromptTemplate(): Promise<string> {
 	if (cachedResponderPrompt) {
 		return cachedResponderPrompt;
